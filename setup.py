@@ -4,7 +4,7 @@ import setuptools
 
 setuptools.setup(
     name='PyOuroboros',
-    version=0.17,
+    version=0.19,
     url='https://ouroboros.rocks',
     keywords='ouroboros IPC subsystem',
     author='Dimitri Staessens',

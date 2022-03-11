@@ -83,12 +83,13 @@ You can specify a QoSSpec for flow allocation.
 For instance,
 
 ```Python
-qos = QoSSpec(loss=0, cypher_s=256)
+qos = QoSSpec(loss=0, cypher_s=256, timeout=60000)
 f = flow_alloc("name", qos)
 ```
 
 will create a new flow with FRCP retransmission enabled and encrypted
-using a 256-bit ECDHE-AES-SHA3 cypher.
+using a 256-bit ECDHE-AES-SHA3 cypher that will timeout if the peer is
+not responsive for 1 minute.
 
 ## Manipulating flows
 

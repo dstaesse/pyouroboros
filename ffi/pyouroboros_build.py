@@ -34,6 +34,7 @@ typedef struct qos_spec {
         uint8_t  in_order;      /* In-order delivery, enables FRCT */
         uint32_t max_gap;       /* In ms */
         uint16_t cypher_s;      /* Cypher strength, 0 = no encryption */
+        uint32_t timeout;       /* Timeout in ms */
 } qosspec_t;
 
 /* OUROBOROS DEV.H */

@@ -19,15 +19,16 @@
 # Foundation, Inc., http://www.fsf.org/about/contact/.
 #
 
-from _ouroboros_cffi import ffi, lib
 import errno
 from enum import IntFlag
+
+from _ouroboros_cffi import ffi, lib
 from ouroboros.qos import *
 from ouroboros.qos import _qos_to_qosspec, _fl_to_timespec, _qosspec_to_qos, _timespec_to_fl
 
 # Some constants
-MILLION = 1000 * 1000
-BILLION = 1000 * 1000 * 1000
+MILLION = 1000_1000
+BILLION = 1000_1000_1000
 
 
 # ouroboros exceptions
@@ -196,8 +197,8 @@ class Flow:
 
         if count is None:
             return lib.flow_write(self.__fd, ffi.from_buffer(buf), len(buf))
-        else:
-            return lib.flow_write(self.__fd, ffi.from_buffer(buf), count)
+
+        return lib.flow_write(self.__fd, ffi.from_buffer(buf), count)
 
     def writeline(self,
                   ln: str) -> int:
@@ -394,5 +395,3 @@ def flow_join(dst: str,
     f = Flow()
     f.join(dst, qos, timeo)
     return f
-
-
