@@ -144,8 +144,7 @@ class Flow:
 
     def join(self,
              dst: str,
-             qos: QoSSpec = None,
-             timeo: float = None) -> Optional[QoSSpec]:
+             timeo: float = None) -> None:
         """
         Join a broadcast layer
 
@@ -158,15 +157,11 @@ class Flow:
         if self.__fd >= 0:
             raise FlowAllocatedException()
 
-        _qos = _qos_to_qosspec(qos)
-
         _timeo = _fl_to_timespec(timeo)
 
-        self.__fd = lib.flow_join(dst.encode(), _qos, _timeo)
+        self.__fd = lib.flow_join(dst.encode(), _timeo)
 
         _raise(self.__fd)
-
-        return _qosspec_to_qos(_qos)
 
     def dealloc(self):
         """

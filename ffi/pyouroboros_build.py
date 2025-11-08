@@ -33,7 +33,6 @@ typedef struct qos_spec {
         uint32_t ber;           /* Bit error rate, errors per billion bits */
         uint8_t  in_order;      /* In-order delivery, enables FRCT */
         uint32_t max_gap;       /* In ms */
-        uint16_t cypher_s;      /* Cypher strength, 0 = no encryption */
         uint32_t timeout;       /* Timeout in ms */
 } qosspec_t;
 
@@ -49,7 +48,6 @@ int     flow_accept(qosspec_t *             qs,
 
 /* Returns flow descriptor, qs updates to supplied QoS. */
 int     flow_join(const char *            bc,
-                  qosspec_t *             qs,
                   const struct timespec * timeo);
 
 int     flow_dealloc(int fd);

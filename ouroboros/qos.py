@@ -37,7 +37,6 @@ class QoSSpec:
     ber:          Bit error rate, errors per billion bits. default BILLION
     in_order:     In-order delivery, enables FRCT, default 0
     max_gap:      Maximum interruption in ms, default MILLION
-    cypher_s:     Requested encryption strength in bits
     timeout:      Peer timeout (ms), default 120000 (2 minutes)
     """
 
@@ -49,7 +48,6 @@ class QoSSpec:
                  ber: int = MILLION,
                  in_order: int = 0,
                  max_gap: int = MILLION,
-                 cypher_s: int = 0,
                  timeout: int = 120000):
         self.delay = delay
         self.bandwidth = bandwidth
@@ -58,7 +56,6 @@ class QoSSpec:
         self.ber = ber
         self.in_order = in_order
         self.max_gap = max_gap
-        self.cypher_s = cypher_s
         self.timeout = timeout
 
 
@@ -96,7 +93,6 @@ def _qos_to_qosspec(qos: QoSSpec):
                         qos.ber,
                         qos.in_order,
                         qos.max_gap,
-                        qos.cypher_s,
                         qos.timeout])
 
 
@@ -111,5 +107,4 @@ def _qosspec_to_qos(_qos) -> Optional[QoSSpec]:
                        ber=_qos.ber,
                        in_order=_qos.in_order,
                        max_gap=_qos.max_gap,
-                       cypher_s=_qos.cypher_s,
                        timeout=_qos.timeout)
