@@ -1,7 +1,7 @@
 #
-# Ouroboros - Copyright (C) 2016 - 2020
+# Ouroboros - Copyright (C) 2016 - 2026
 #
-# Python API for applications
+# Python API for Ouroboros
 #
 #    Dimitri Staessens <dimitri@ouroboros.rocks>
 #
@@ -24,15 +24,24 @@ from cffi import FFI
 ffibuilder: FFI = FFI()
 
 ffibuilder.cdef("""
+/* System types */
+typedef long... time_t;
+
+struct timespec {
+    time_t tv_sec;
+    long   tv_nsec;
+    ...;
+};
+
 /* OUROBOROS QOS.H */
 typedef struct qos_spec {
-        uint32_t delay;         /* In ms */
-        uint64_t bandwidth;     /* In bits/s */
-        uint8_t  availability;  /* Class of 9s */
-        uint32_t loss;          /* Packet loss */
-        uint32_t ber;           /* Bit error rate, errors per billion bits */
-        uint8_t  in_order;      /* In-order delivery, enables FRCT */
-        uint32_t max_gap;       /* In ms */
+        uint32_t delay;
+        uint64_t bandwidth;
+        uint8_t  availability;
+        uint32_t loss;
+        uint32_t ber;
+        uint8_t  in_order;
+        uint32_t max_gap;
         uint32_t timeout;       /* Timeout in ms */
 } qosspec_t;
 
@@ -46,7 +55,7 @@ int     flow_alloc(const char *            dst_name,
 int     flow_accept(qosspec_t *             qs,
                     const struct timespec * timeo);
 
-/* Returns flow descriptor, qs updates to supplied QoS. */
+/* Returns flow descriptor. */
 int     flow_join(const char *            bc,
                   const struct timespec * timeo);
 
@@ -60,7 +69,7 @@ ssize_t flow_read(int    fd,
                   void * buf,
                   size_t count);
 
-/*OUROBOROS FCCNTL.H, VIA WRAPPER */
+/* OUROBOROS FCCNTL.H, VIA WRAPPER */
 int flow_set_snd_timeout(int fd, struct timespec * ts);
 
 int flow_set_rcv_timeout(int fd, struct timespec * ts);
@@ -79,13 +88,18 @@ int flow_set_flags(int fd, uint32_t flags);
 
 int flow_get_flags(int fd);
 
-/*OUROBOROS FQUEUE.H */
+int flow_set_frct_flags(int fd, uint16_t flags);
+
+int flow_get_frct_flags(int fd);
+
+/* OUROBOROS FQUEUE.H */
 enum fqtype {
-        FLOW_PKT     = (1 << 0),
-        FLOW_DOWN    = (1 << 1),
-        FLOW_UP      = (1 << 2),
-        FLOW_ALLOC   = (1 << 3),
-        FLOW_DEALLOC = (1 << 4)
+        FLOW_PKT     = ...,
+        FLOW_DOWN    = ...,
+        FLOW_UP      = ...,
+        FLOW_ALLOC   = ...,
+        FLOW_DEALLOC = ...,
+        FLOW_PEER    = ...
 };
 
 struct flow_set;
@@ -116,14 +130,14 @@ void        fset_del(fset_t * set,
 
 int         fqueue_next(fqueue_t * fq);
 
-int         fqueue_type(fqueue_t * fq);
+enum fqtype fqueue_type(fqueue_t * fq);
 
 ssize_t     fevent(fset_t *                set,
                    fqueue_t *              fq,
                    const struct timespec * timeo);
 """)
 
-ffibuilder.set_source("_ouroboros_cffi",
+ffibuilder.set_source("_ouroboros_dev_cffi",
                       """
 #include "ouroboros/qos.h"
 #include "ouroboros/dev.h"

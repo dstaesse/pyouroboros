@@ -1,6 +1,6 @@
 #!/bin/python
 
-# Ouroboros - Copyright (C) 2016 - 2020
+# Ouroboros - Copyright (C) 2016 - 2026
 #
 # A simple echo application
 #

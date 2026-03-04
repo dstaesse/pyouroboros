@@ -153,6 +153,7 @@ class FEventType(IntFlag):
     FlowUp
     FlowAlloc
     FlowDealloc
+    FlowPeer
 ```
 
 and can be obtained by calling the next method:
@@ -186,9 +187,206 @@ if t == FEventType.FlowPkt:
     line = f2.readline()
 ```
 
+## IRM API
+
+The IRM (IPC Resource Manager) module allows managing IPCPs, names,
+and bindings programmatically.
+
+```Python
+from ouroboros.irm import *
+```
+
+### IPCP Management
+
+Creating, bootstrapping, enrolling, and destroying IPCPs:
+
+```Python
+# Create a local IPCP
+pid = create_ipcp("my_ipcp", IpcpType.LOCAL)
+
+# Bootstrap it into a layer
+conf = IpcpConfig(ipcp_type=IpcpType.LOCAL, layer_name="my_layer")
+bootstrap_ipcp(pid, conf)
+
+# List all running IPCPs
+for ipcp in list_ipcps():
+    print(ipcp)
+
+# Enroll an IPCP
+enroll_ipcp(pid, "enrollment_dst")
+
+# Destroy an IPCP
+destroy_ipcp(pid)
+```
+
+IPCP types: `LOCAL`, `UNICAST`, `BROADCAST`, `ETH_LLC`, `ETH_DIX`,
+`UDP4`, `UDP6`.
+
+### IPCP Configuration
+
+The `IpcpConfig` class is used to bootstrap an IPCP. It takes
+the following parameters:
+
+```Python
+IpcpConfig(
+    ipcp_type,                                       # IpcpType (required)
+    layer_name="",                                   # Layer name (string)
+    dir_hash_algo=DirectoryHashAlgo.SHA3_256,        # Hash algorithm
+    unicast=None, eth=None, udp4=None, udp6=None     # Type-specific config
+)
+```
+
+The `dir_hash_algo` can be set to `SHA3_224`, `SHA3_256`, `SHA3_384`,
+or `SHA3_512`.
+
+#### Local and Broadcast IPCPs
+
+Local and Broadcast IPCPs need no type-specific configuration:
+
+```Python
+conf = IpcpConfig(ipcp_type=IpcpType.LOCAL, layer_name="local_layer")
+conf = IpcpConfig(ipcp_type=IpcpType.BROADCAST, layer_name="bc_layer")
+```
+
+#### Unicast IPCPs
+
+Unicast IPCPs have the most detailed configuration, structured as
+follows:
+
+```Python
+conf = IpcpConfig(
+    ipcp_type=IpcpType.UNICAST,
+    layer_name="my_layer",
+    unicast=UnicastConfig(
+        dt=DtConfig(
+            addr_size=4,       # Address size in bytes (default: 4)
+            eid_size=8,        # Endpoint ID size in bytes (default: 8)
+            max_ttl=60,        # Maximum time-to-live (default: 60)
+            routing=RoutingConfig(
+                pol=RoutingPolicy.LINK_STATE,
+                ls=LinkStateConfig(
+                    pol=LinkStatePolicy.SIMPLE,  # SIMPLE, LFA, or ECMP
+                    t_recalc=4,                  # Recalculation interval (s)
+                    t_update=15,                 # Update interval (s)
+                    t_timeo=60                   # Timeout (s)
+                )
+            )
+        ),
+        dir=DirConfig(
+            pol=DirectoryPolicy.DHT,
+            dht=DhtConfig(
+                alpha=3,           # Concurrency parameter
+                k=8,               # Replication factor
+                t_expire=86400,    # Entry expiry time (s)
+                t_refresh=900,     # Refresh interval (s)
+                t_replicate=900    # Replication interval (s)
+            )
+        ),
+        addr_auth=AddressAuthPolicy.FLAT_RANDOM,
+        cong_avoid=CongestionAvoidPolicy.MB_ECN  # or CA_NONE
+    )
+)
+```
+
+All sub-configs have sensible defaults, so for most cases a simpler
+form suffices:
+
+```Python
+conf = IpcpConfig(
+    ipcp_type=IpcpType.UNICAST,
+    layer_name="my_layer",
+    unicast=UnicastConfig()
+)
+```
+
+#### Ethernet IPCPs (LLC and DIX)
+
+```Python
+conf = IpcpConfig(
+    ipcp_type=IpcpType.ETH_LLC,  # or IpcpType.ETH_DIX
+    layer_name="eth_layer",
+    eth=EthConfig(
+        dev="eth0",         # Network device name
+        ethertype=0xA000    # Ethertype (mainly for DIX)
+    )
+)
+```
+
+#### UDP IPCPs
+
+For UDP over IPv4:
+
+```Python
+conf = IpcpConfig(
+    ipcp_type=IpcpType.UDP4,
+    layer_name="udp4_layer",
+    udp4=Udp4Config(
+        ip_addr="192.168.1.1",    # Local IP address
+        dns_addr="192.168.1.254", # DNS server address
+        port=3435                 # UDP port (default: 3435)
+    )
+)
+```
+
+For UDP over IPv6:
+
+```Python
+conf = IpcpConfig(
+    ipcp_type=IpcpType.UDP6,
+    layer_name="udp6_layer",
+    udp6=Udp6Config(
+        ip_addr="fd00::1",       # Local IPv6 address
+        dns_addr="fd00::fe",     # DNS server address
+        port=3435                # UDP port (default: 3435)
+    )
+)
+```
+
+### Connecting IPCP Components
+
+Connecting and disconnecting IPCP components:
+
+```Python
+connect_ipcp(pid, DT_COMP, "destination")
+disconnect_ipcp(pid, DT_COMP, "destination")
+```
+
+### Name Management
+
+Creating, destroying, and listing names:
+
+```Python
+# Create a name
+info = NameInfo(name="my_name", pol_lb=LoadBalancePolicy.ROUND_ROBIN)
+create_name(info)
+
+# Register/unregister an IPCP to a name
+reg_name("my_name", pid)
+unreg_name("my_name", pid)
+
+# List all registered names
+for name in list_names():
+    print(name.name)
+
+# Destroy a name
+destroy_name("my_name")
+```
+
+### Binding Programs and Processes
+
+```Python
+# Bind a program to a name (auto-start on flow allocation)
+bind_program("/usr/bin/my_server", "my_name", BIND_AUTO)
+unbind_program("/usr/bin/my_server", "my_name")
+
+# Bind a running process to a name
+bind_process(pid, "my_name")
+unbind_process(pid, "my_name")
+```
+
 ## Examples
 
 Some example code is in the examples folder.
 
 ## License
-pyOuorboros is LGPLv2.1. The examples are 3-clause BSD.
+pyOuroboros is LGPLv2.1. The examples are 3-clause BSD.

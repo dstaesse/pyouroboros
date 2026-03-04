@@ -4,7 +4,7 @@ import setuptools
 
 setuptools.setup(
     name='PyOuroboros',
-    version=0.19,
+    version='0.23.0',
     url='https://ouroboros.rocks',
     keywords='ouroboros IPC subsystem',
     author='Dimitri Staessens',
@@ -18,7 +18,8 @@ setuptools.setup(
         "cffi>=1.0.0"
     ],
     cffi_modules=[
-        "ffi/pyouroboros_build.py:ffibuilder"
+        "ffi/pyouroboros_build_dev.py:ffibuilder",
+        "ffi/pyouroboros_build_irm.py:ffibuilder"
     ],
     install_requires=[
         "cffi>=1.0.0"

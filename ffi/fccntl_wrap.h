@@ -1,10 +1,10 @@
 /*
- * Ouroboros - Copyright (C) 2016 - 2020
+ * Ouroboros - Copyright (C) 2016 - 2026
  *
  * An fccntl wrapper
  *
- *    Dimitri Staessens <dimitri.staessens@ugent.be>
- *    Sander Vrijders   <sander.vrijders@ugent.be>
+ *    Dimitri Staessens <dimitri@ouroboros.rocks>
+ *    Sander Vrijders   <sander@ouroboros.rocks>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -67,6 +67,21 @@ int flow_get_flags(int fd)
         uint32_t flags;
 
         if (fccntl(fd, FLOWGFLAGS, &flags))
+                return -EPERM;
+
+        return (int) flags;
+}
+
+int flow_set_frct_flags(int fd, uint16_t flags)
+{
+        return fccntl(fd, FRCTSFLAGS, flags);
+}
+
+int flow_get_frct_flags(int fd)
+{
+        uint16_t flags;
+
+        if (fccntl(fd, FRCTGFLAGS, &flags))
                 return -EPERM;
 
         return (int) flags;

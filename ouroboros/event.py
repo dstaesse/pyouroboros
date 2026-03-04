@@ -1,7 +1,7 @@
 #
-# Ouroboros - Copyright (C) 2016 - 2020
+# Ouroboros - Copyright (C) 2016 - 2026
 #
-# Python API for applications
+# Python API for Ouroboros
 #
 #    Dimitri Staessens <dimitri@ouroboros.rocks>
 #
@@ -20,7 +20,7 @@
 #
 
 from ouroboros.dev import *
-from ouroboros.qos import _fl_to_timespec
+from ouroboros.dev import _fl_to_timespec
 
 
 # async API
@@ -34,6 +34,7 @@ class FEventType(IntFlag):
     FlowUp = lib.FLOW_UP
     FlowAlloc = lib.FLOW_ALLOC
     FlowDealloc = lib.FLOW_DEALLOC
+    FlowPeer = lib.FLOW_PEER
 
 
 class FEventQueue:
@@ -101,7 +102,7 @@ class FlowSet:
         if self.__set is ffi.NULL:
             raise ValueError
 
-        if lib.fset_add(self.__set, flow._Flow___fd) != 0:
+        if lib.fset_add(self.__set, flow._Flow__fd) != 0:
             raise MemoryError("Failed to add flow")
 
     def zero(self):

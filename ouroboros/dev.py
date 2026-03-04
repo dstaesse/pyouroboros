@@ -1,7 +1,7 @@
 #
-# Ouroboros - Copyright (C) 2016 - 2020
+# Ouroboros - Copyright (C) 2016 - 2026
 #
-# Python API for applications
+# Python API for Ouroboros
 #
 #    Dimitri Staessens <dimitri@ouroboros.rocks>
 #
@@ -21,14 +21,72 @@
 
 import errno
 from enum import IntFlag
+from math import modf
+from typing import Optional
 
-from _ouroboros_cffi import ffi, lib
+from _ouroboros_dev_cffi import ffi, lib
 from ouroboros.qos import *
-from ouroboros.qos import _qos_to_qosspec, _fl_to_timespec, _qosspec_to_qos, _timespec_to_fl
 
 # Some constants
-MILLION = 1000_1000
-BILLION = 1000_1000_1000
+MILLION = 1000 * 1000
+BILLION = 1000 * 1000 * 1000
+
+
+def _fl_to_timespec(timeo: float):
+    if timeo is None:
+        return ffi.NULL
+    elif timeo <= 0:
+        return ffi.new("struct timespec *", [0, 0])
+    else:
+        frac, whole = modf(timeo)
+        _timeo = ffi.new("struct timespec *")
+        _timeo.tv_sec = int(whole)
+        _timeo.tv_nsec = int(frac * BILLION)
+        return _timeo
+
+
+def _timespec_to_fl(_timeo) -> Optional[float]:
+    if _timeo is ffi.NULL:
+        return None
+    elif _timeo.tv_sec <= 0 and _timeo.tv_nsec == 0:
+        return 0
+    else:
+        return _timeo.tv_sec + _timeo.tv_nsec / BILLION
+
+
+# Intentionally duplicated, dev uses a separate FFI (ouroboros-dev).
+def _qos_to_qosspec(qos: QoSSpec):
+    if qos is None:
+        return ffi.NULL
+    else:
+        return ffi.new("qosspec_t *",
+                       [qos.delay,
+                        qos.bandwidth,
+                        qos.availability,
+                        qos.loss,
+                        qos.ber,
+                        qos.in_order,
+                        qos.max_gap,
+                        qos.timeout])
+
+
+def _qosspec_to_qos(_qos) -> Optional[QoSSpec]:
+    if _qos is ffi.NULL:
+        return None
+    else:
+        return QoSSpec(delay=_qos.delay,
+                       bandwidth=_qos.bandwidth,
+                       availability=_qos.availability,
+                       loss=_qos.loss,
+                       ber=_qos.ber,
+                       in_order=_qos.in_order,
+                       max_gap=_qos.max_gap,
+                       timeout=_qos.timeout)
+
+# FRCT flags
+FRCT_RETRANSMIT = 0o1
+FRCT_RESCNTL    = 0o2
+FRCT_LINGER     = 0o4
 
 
 # ouroboros exceptions
@@ -248,7 +306,7 @@ class Flow:
         """
         _timeo = _fl_to_timespec(timeo)
 
-        if lib.flow_set_snd_timout(self.__fd, _timeo) != 0:
+        if lib.flow_set_snd_timeout(self.__fd, _timeo) != 0:
             raise FlowPermissionException()
 
     def get_snd_timeout(self) -> float:
@@ -271,7 +329,7 @@ class Flow:
         """
         _timeo = _fl_to_timespec(timeo)
 
-        if lib.flow_set_rcv_timout(self.__fd, _timeo) != 0:
+        if lib.flow_set_rcv_timeout(self.__fd, _timeo) != 0:
             raise FlowPermissionException()
 
     def get_rcv_timeout(self) -> float:
@@ -331,9 +389,7 @@ class Flow:
         :param flags:
         """
 
-        _flags = ffi.new("uint32_t *", int(flags))
-
-        if lib.flow_set_flag(self.__fd, _flags):
+        if lib.flow_set_flags(self.__fd, int(flags)):
             raise FlowPermissionException()
 
     def get_flags(self) -> FlowProperties:
@@ -341,11 +397,33 @@ class Flow:
         Get the flags for this flow
         """
 
-        flags = lib.flow_get_flag(self.__fd)
+        flags = lib.flow_get_flags(self.__fd)
         if flags < 0:
             raise FlowPermissionException()
 
         return FlowProperties(int(flags))
+
+    def set_frct_flags(self, flags: int):
+        """
+        Set FRCT flags for this flow.
+        :param flags: Bitmask of FRCT_RETRANSMIT, FRCT_RESCNTL, FRCT_LINGER
+        """
+
+        if lib.flow_set_frct_flags(self.__fd, flags):
+            raise FlowPermissionException()
+
+    def get_frct_flags(self) -> int:
+        """
+        Get the FRCT flags for this flow
+
+        :return: Bitmask of FRCT flags
+        """
+
+        flags = lib.flow_get_frct_flags(self.__fd)
+        if flags < 0:
+            raise FlowPermissionException()
+
+        return int(flags)
 
 
 def flow_alloc(dst: str,
