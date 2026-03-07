@@ -388,5 +388,16 @@ unbind_process(pid, "my_name")
 
 Some example code is in the examples folder.
 
+## Versioning
+
+pyOuroboros uses `setuptools_scm` to derive its version from git tags.
+
+**Compatibility contract across Ouroboros repositories:**
+
+| Scope | Rule |
+|---|---|
+| ouroboros (C) ↔ pyouroboros / rumba | Shared `major.minor` — pyouroboros requires at least the same ouroboros `major.minor` |
+| pyouroboros ↔ rumba ↔ ouroboros-integration | Strict lockstep `major.minor.patch` — always released together |
+
 ## License
 pyOuroboros is LGPLv2.1. The examples are 3-clause BSD.

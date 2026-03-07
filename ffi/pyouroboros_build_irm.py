@@ -34,6 +34,11 @@ struct timespec {
     ...;
 };
 
+/* OUROBOROS VERSION.H */
+#define OUROBOROS_VERSION_MAJOR ...
+#define OUROBOROS_VERSION_MINOR ...
+#define OUROBOROS_VERSION_PATCH ...
+
 /* Network types */
 struct in_addr { ...; };
 struct in6_addr { ...; };
@@ -281,6 +286,7 @@ void free(void *ptr);
 
 ffibuilder.set_source("_ouroboros_irm_cffi",
                       """
+#include "ouroboros/version.h"
 #include "ouroboros/qos.h"
 #include "irm_wrap.h"
                       """,

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8", "cffi>=1.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PyOuroboros"
+dynamic = ["version"]
+description = "Python API for Ouroboros"
+license = "LGPL-2.1-only"
+requires-python = ">=3.8"
+authors = [
+    { name = "Dimitri Staessens", email = "dimitri@ouroboros.rocks" }
+]
+keywords = ["ouroboros", "IPC"]
+dependencies = ["cffi>=1.0.0"]
+
+[project.urls]
+Homepage = "https://ouroboros.rocks"
+
+[tool.setuptools]
+packages = ["ouroboros"]
+
+[tool.setuptools_scm]

@@ -26,6 +26,30 @@ from _ouroboros_irm_cffi import ffi, lib
 from ouroboros.qos import QoSSpec
 
 
+def _check_ouroboros_version():
+    ouro_major = lib.OUROBOROS_VERSION_MAJOR
+    ouro_minor = lib.OUROBOROS_VERSION_MINOR
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+        try:
+            pyouro_parts = version('PyOuroboros').split('.')
+        except PackageNotFoundError:
+            return  # running from source, skip check
+        if ouro_major != int(pyouro_parts[0]) or \
+                ouro_minor != int(pyouro_parts[1]):
+            raise RuntimeError(
+                f"Ouroboros version mismatch: library is "
+                f"{ouro_major}.{ouro_minor}, "
+                f"pyouroboros is "
+                f"{pyouro_parts[0]}.{pyouro_parts[1]}"
+            )
+    except ImportError:
+        pass  # Python < 3.8
+
+
+_check_ouroboros_version()
+
+
 # Intentionally duplicated: irm uses a separate FFI (ouroboros-irm).
 def _qos_to_qosspec(qos: QoSSpec):
     if qos is None:

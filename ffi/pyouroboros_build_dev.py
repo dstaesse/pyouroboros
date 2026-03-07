@@ -33,6 +33,11 @@ struct timespec {
     ...;
 };
 
+/* OUROBOROS VERSION.H */
+#define OUROBOROS_VERSION_MAJOR ...
+#define OUROBOROS_VERSION_MINOR ...
+#define OUROBOROS_VERSION_PATCH ...
+
 /* OUROBOROS QOS.H */
 typedef struct qos_spec {
         uint32_t delay;
@@ -139,6 +144,7 @@ ssize_t     fevent(fset_t *                set,
 
 ffibuilder.set_source("_ouroboros_dev_cffi",
                       """
+#include "ouroboros/version.h"
 #include "ouroboros/qos.h"
 #include "ouroboros/dev.h"
 #include "fccntl_wrap.h"
