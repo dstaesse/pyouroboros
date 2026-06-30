@@ -19,14 +19,14 @@
 # Foundation, Inc., http://www.fsf.org/about/contact/.
 #
 
-"""
-Higher-level wrappers that mirror CLI tool behaviour.
+"""Higher-level wrappers that mirror the ``irm`` CLI tool behaviour.
 
-The ``irm`` CLI tools perform extra steps that the raw C library API
-does not, such as resolving program names via ``realpath``, looking up
-IPCP pids, and the ``autobind`` flag for bootstrapping/enrolling.
-This module exposes those same patterns as a Python API so that
-callers do not need to re-implement them.
+This is the Python counterpart of the C project's ``ouroboros/tools/irm``
+command-line tool. The ``irm`` CLI performs steps that the raw C
+library API does not, such as resolving program names via ``realpath``,
+looking up IPCP pids, and handling the ``autobind`` flag during
+bootstrap/enroll. This module exposes those same patterns as a Python
+API so callers do not need to re-implement them.
 
 Each wrapper corresponds to a specific ``irm`` sub-command:
 
@@ -61,26 +61,28 @@ Usage::
     from ouroboros.cli import bind_program, autoboot
 """
 
-import shutil
-from typing import List, Optional
+from __future__ import annotations
 
+import shutil
+from typing import List, Optional, Set
+
+from ouroboros.errors import BindError
 from ouroboros.irm import (
     DT_COMP,
     MGMT_COMP,
-    IpcpType,
+    DhtConfig,
+    DirConfig,
+    DtConfig,
+    EthConfig,
     IpcpConfig,
     IpcpInfo,
-    NameInfo,
-    BindError,
-    IrmError,
-    UnicastConfig,
-    DtConfig,
-    RoutingConfig,
+    IpcpType,
     LinkStateConfig,
-    LinkStatePolicy,
-    EthConfig,
+    NameInfo,
+    RoutingConfig,
     Udp4Config,
     Udp6Config,
+    UnicastConfig,
     bind_program as _irm_bind_program,
     bind_process as _irm_bind_process,
     bootstrap_ipcp as _irm_bootstrap_ipcp,
@@ -100,6 +102,21 @@ from ouroboros.irm import (
 )
 from ouroboros.qos import QoSSpec
 
+__all__ = [
+    # Functions
+    "create_ipcp", "destroy_ipcp", "bootstrap_ipcp", "enroll_ipcp",
+    "connect_ipcp", "disconnect_ipcp", "list_ipcps",
+    "bind_program", "bind_process", "bind_ipcp",
+    "unbind_program", "unbind_process", "unbind_ipcp",
+    "create_name", "destroy_name", "reg_name", "unreg_name", "list_names",
+    "autoboot",
+    # Re-exported configuration types (convenience)
+    "DhtConfig", "DirConfig", "DtConfig", "EthConfig",
+    "IpcpConfig", "IpcpInfo", "IpcpType",
+    "LinkStateConfig", "NameInfo", "RoutingConfig",
+    "Udp4Config", "Udp6Config", "UnicastConfig",
+]
+
 
 def _pid_of(ipcp_name: str) -> int:
     """Look up the pid of a running IPCP by its name."""
@@ -109,9 +126,42 @@ def _pid_of(ipcp_name: str) -> int:
     raise ValueError(f"No IPCP named {ipcp_name!r}")
 
 
+def _collect_pids(ipcp: Optional[str],
+                  ipcps: Optional[List[str]],
+                  layer: Optional[str],
+                  layers: Optional[List[str]]) -> Set[int]:
+    """Collect the set of pids matching the given name/layer filters."""
+    ipcp_names: List[str] = []
+    if ipcp is not None:
+        ipcp_names.append(ipcp)
+    if ipcps is not None:
+        ipcp_names.extend(ipcps)
+
+    layer_names: List[str] = []
+    if layer is not None:
+        layer_names.append(layer)
+    if layers is not None:
+        layer_names.extend(layers)
+
+    pids: Set[int] = set()
+    if not ipcp_names and not layer_names:
+        return pids
+
+    all_ipcps = _irm_list_ipcps()
+    for ipcp_name in ipcp_names:
+        for i in all_ipcps:
+            if i.name == ipcp_name:
+                pids.add(i.pid)
+                break
+    for lyr in layer_names:
+        for i in all_ipcps:
+            if i.layer == lyr:
+                pids.add(i.pid)
+    return pids
+
+
 def destroy_ipcp(name: str) -> None:
-    """
-    Destroy an IPCP by name.
+    """Destroy an IPCP by name.
 
     Mirrors ``irm ipcp destroy name <name>``.
 
@@ -126,8 +176,7 @@ def destroy_ipcp(name: str) -> None:
 def list_ipcps(name: Optional[str] = None,
                layer: Optional[str] = None,
                ipcp_type: Optional[IpcpType] = None) -> List[IpcpInfo]:
-    """
-    List running IPCPs, optionally filtered.
+    """List running IPCPs, optionally filtered.
 
     Mirrors ``irm ipcp list [name <n>] [type <t>] [layer <l>]``.
 
@@ -151,8 +200,7 @@ def reg_name(name: str,
              ipcps: Optional[List[str]] = None,
              layer: Optional[str] = None,
              layers: Optional[List[str]] = None) -> None:
-    """
-    Register a name with IPCP(s), creating it first if needed.
+    """Register a name with IPCP(s), creating it first if needed.
 
     Mirrors ``irm name register <name> ipcp <ipcp> [ipcp ...]
     layer <layer> [layer ...]``.
@@ -178,59 +226,30 @@ def reg_name(name: str,
     if name not in existing:
         _irm_create_name(NameInfo(name=name))
 
-    pids = set()
-
-    # Collect IPCP names into a single list
-    ipcp_names = []
-    if ipcp is not None:
-        ipcp_names.append(ipcp)
-    if ipcps is not None:
-        ipcp_names.extend(ipcps)
-
-    # Collect layer names into a single list
-    layer_names = []
-    if layer is not None:
-        layer_names.append(layer)
-    if layers is not None:
-        layer_names.extend(layers)
-
-    if ipcp_names or layer_names:
-        all_ipcps = _irm_list_ipcps()
-        for ipcp_name in ipcp_names:
-            for i in all_ipcps:
-                if i.name == ipcp_name:
-                    pids.add(i.pid)
-                    break
-        for lyr in layer_names:
-            for i in all_ipcps:
-                if i.layer == lyr:
-                    pids.add(i.pid)
-
-    for p in pids:
-        _irm_reg_name(name, p)
+    for pid in _collect_pids(ipcp, ipcps, layer, layers):
+        _irm_reg_name(name, pid)
 
 
 def bind_program(prog: str,
                  name: str,
                  opts: int = 0,
                  argv: Optional[List[str]] = None) -> None:
-    """
-    Bind a program to a name, resolving bare names to full paths.
+    """Bind a program to a name, resolving bare names to full paths.
 
     Mirrors ``irm bind program <prog> name <name>``.
 
     The ``irm bind program`` CLI tool calls ``realpath()`` on *prog*
-    before passing it to the library.  The raw C function
+    before passing it to the library. The raw C function
     ``irm_bind_program`` contains a ``check_prog_path`` helper that
     corrupts the ``PATH`` environment variable (writes NUL over ``:``
-    separators) when given a bare program name.  Only the first such
+    separators) when given a bare program name. Only the first such
     call would succeed in a long-running process.
 
     This wrapper resolves *prog* via ``shutil.which()`` before calling
     the library, avoiding the bug entirely.
 
-    :param prog: Program name or path.  Bare names (without ``/``)
-                 are resolved on ``PATH`` via ``shutil.which()``.
+    :param prog: Program name or path. Bare names (without ``/``) are
+                 resolved on ``PATH`` via ``shutil.which()``.
     :param name: Name to bind to.
     :param opts: Bind options (e.g. ``BIND_AUTO``).
     :param argv: Arguments to pass when the program is auto-started.
@@ -246,8 +265,7 @@ def bind_program(prog: str,
 
 
 def unbind_program(prog: str, name: str) -> None:
-    """
-    Unbind a program from a name.
+    """Unbind a program from a name.
 
     Mirrors ``irm unbind program <prog> name <name>``.
 
@@ -258,8 +276,7 @@ def unbind_program(prog: str, name: str) -> None:
 
 
 def bind_process(pid: int, name: str) -> None:
-    """
-    Bind a running process to a name.
+    """Bind a running process to a name.
 
     Mirrors ``irm bind process <pid> name <name>``.
 
@@ -270,8 +287,7 @@ def bind_process(pid: int, name: str) -> None:
 
 
 def unbind_process(pid: int, name: str) -> None:
-    """
-    Unbind a process from a name.
+    """Unbind a process from a name.
 
     Mirrors ``irm unbind process <pid> name <name>``.
 
@@ -282,12 +298,11 @@ def unbind_process(pid: int, name: str) -> None:
 
 
 def bind_ipcp(ipcp: str, name: str) -> None:
-    """
-    Bind an IPCP to a name.
+    """Bind an IPCP to a name.
 
     Mirrors ``irm bind ipcp <ipcp> name <name>``.
 
-    Resolves the IPCP name to a pid, then calls ``bind_process``.
+    Resolves the IPCP name to a pid, then calls :func:`bind_process`.
 
     :param ipcp: IPCP instance name.
     :param name: Name to bind to.
@@ -297,12 +312,11 @@ def bind_ipcp(ipcp: str, name: str) -> None:
 
 
 def unbind_ipcp(ipcp: str, name: str) -> None:
-    """
-    Unbind an IPCP from a name.
+    """Unbind an IPCP from a name.
 
     Mirrors ``irm unbind ipcp <ipcp> name <name>``.
 
-    Resolves the IPCP name to a pid, then calls ``unbind_process``.
+    Resolves the IPCP name to a pid, then calls :func:`unbind_process`.
 
     :param ipcp: IPCP instance name.
     :param name: Name to unbind from.
@@ -314,14 +328,13 @@ def unbind_ipcp(ipcp: str, name: str) -> None:
 def create_name(name: str,
                 pol_lb: Optional[int] = None,
                 info: Optional[NameInfo] = None) -> None:
-    """
-    Create a registered name.
+    """Create a registered name.
 
     Mirrors ``irm name create <name> [lb <policy>]``.
 
     :param name:   The name to create.
     :param pol_lb: Load-balance policy (optional).
-    :param info:   Full :class:`NameInfo` (overrides *name*/*pol_lb*
+    :param info:   Full :class:`NameInfo` (overrides *name* / *pol_lb*
                    if given).
     """
     if info is not None:
@@ -334,8 +347,7 @@ def create_name(name: str,
 
 
 def list_names(name: Optional[str] = None) -> List[NameInfo]:
-    """
-    List all registered names, optionally filtered.
+    """List all registered names, optionally filtered.
 
     Mirrors ``irm name list [<name>]``.
 
@@ -353,8 +365,7 @@ def unreg_name(name: str,
                ipcps: Optional[List[str]] = None,
                layer: Optional[str] = None,
                layers: Optional[List[str]] = None) -> None:
-    """
-    Unregister a name from IPCP(s).
+    """Unregister a name from IPCP(s).
 
     Mirrors ``irm name unregister <name> ipcp <ipcp> [ipcp ...]
     layer <layer> [layer ...]``.
@@ -367,41 +378,14 @@ def unreg_name(name: str,
     :param layer:  Single layer name to unregister from.
     :param layers: List of layer names to unregister from.
     """
-    pids = set()
-
-    ipcp_names = []
-    if ipcp is not None:
-        ipcp_names.append(ipcp)
-    if ipcps is not None:
-        ipcp_names.extend(ipcps)
-
-    layer_names = []
-    if layer is not None:
-        layer_names.append(layer)
-    if layers is not None:
-        layer_names.extend(layers)
-
-    if ipcp_names or layer_names:
-        all_ipcps = _irm_list_ipcps()
-        for ipcp_name in ipcp_names:
-            for i in all_ipcps:
-                if i.name == ipcp_name:
-                    pids.add(i.pid)
-                    break
-        for lyr in layer_names:
-            for i in all_ipcps:
-                if i.layer == lyr:
-                    pids.add(i.pid)
-
-    for p in pids:
-        _irm_unreg_name(name, p)
+    for pid in _collect_pids(ipcp, ipcps, layer, layers):
+        _irm_unreg_name(name, pid)
 
 
 def bootstrap_ipcp(name: str,
                    conf: IpcpConfig,
                    autobind: bool = False) -> None:
-    """
-    Bootstrap an IPCP, optionally binding it to its name and layer.
+    """Bootstrap an IPCP, optionally binding it to its name and layer.
 
     Mirrors ``irm ipcp bootstrap name <n> layer <l> [autobind]``.
 
@@ -412,7 +396,7 @@ def bootstrap_ipcp(name: str,
         bind_process(pid, layer_name)   # accept flows for layer name
         bootstrap_ipcp(pid, conf)       # bootstrap into the layer
 
-    This matches the C ``irm ipcp bootstrap`` tool exactly.  If
+    This matches the C ``irm ipcp bootstrap`` tool exactly. If
     bootstrap fails after autobind, the bindings are rolled back.
 
     :param name:     Name of the IPCP.
@@ -421,17 +405,16 @@ def bootstrap_ipcp(name: str,
     """
     pid = _pid_of(name)
     layer_name = conf.layer_name
+    autobind_types = (IpcpType.UNICAST, IpcpType.BROADCAST)
 
-    if autobind and conf.ipcp_type in (IpcpType.UNICAST,
-                                       IpcpType.BROADCAST):
+    if autobind and conf.ipcp_type in autobind_types:
         _irm_bind_process(pid, name)
         _irm_bind_process(pid, layer_name)
 
     try:
         _irm_bootstrap_ipcp(pid, conf)
     except Exception:
-        if autobind and conf.ipcp_type in (IpcpType.UNICAST,
-                                           IpcpType.BROADCAST):
+        if autobind and conf.ipcp_type in autobind_types:
             _irm_unbind_process(pid, name)
             _irm_unbind_process(pid, layer_name)
         raise
@@ -439,8 +422,7 @@ def bootstrap_ipcp(name: str,
 
 def enroll_ipcp(name: str, dst: str,
                 autobind: bool = False) -> None:
-    """
-    Enroll an IPCP, optionally binding it to its name and layer.
+    """Enroll an IPCP, optionally binding it to its name and layer.
 
     Mirrors ``irm ipcp enroll name <n> layer <dst> [autobind]``.
 
@@ -461,7 +443,7 @@ def enroll_ipcp(name: str, dst: str,
     _irm_enroll_ipcp(pid, dst)
 
     if autobind:
-        # Look up enrolled layer from the IPCP list
+        # Look up enrolled layer from the IPCP list.
         for info in _irm_list_ipcps():
             if info.pid == pid:
                 _irm_bind_process(pid, info.name)
@@ -471,8 +453,7 @@ def enroll_ipcp(name: str, dst: str,
 
 def connect_ipcp(name: str, dst: str, comp: str = "*",
                  qos: Optional[QoSSpec] = None) -> None:
-    """
-    Connect IPCP components to a destination.
+    """Connect IPCP components to a destination.
 
     Mirrors ``irm ipcp connect name <n> dst <dst> [component <c>]
     [qos <qos>]``.
@@ -494,8 +475,7 @@ def connect_ipcp(name: str, dst: str, comp: str = "*",
 
 
 def disconnect_ipcp(name: str, dst: str, comp: str = "*") -> None:
-    """
-    Disconnect IPCP components from a destination.
+    """Disconnect IPCP components from a destination.
 
     Mirrors ``irm ipcp disconnect name <n> dst <dst>
     [component <c>]``.
@@ -519,8 +499,7 @@ def autoboot(name: str,
              ipcp_type: IpcpType,
              layer: str,
              conf: Optional[IpcpConfig] = None) -> None:
-    """
-    Create, autobind and bootstrap an IPCP in one step.
+    """Create, autobind and bootstrap an IPCP in one step.
 
     Convenience wrapper equivalent to::
 
@@ -531,8 +510,8 @@ def autoboot(name: str,
     :param name:      Name for the IPCP.
     :param ipcp_type: Type of IPCP to create.
     :param layer:     Layer name to bootstrap into.
-    :param conf:      Optional IPCP configuration.  If *None*, a
-                      default ``IpcpConfig`` is created for the given
+    :param conf:      Optional IPCP configuration. If *None*, a default
+                      :class:`IpcpConfig` is created for the given
                       *ipcp_type* and *layer*.
     """
     create_ipcp(name, ipcp_type)
