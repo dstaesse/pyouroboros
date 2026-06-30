@@ -19,476 +19,376 @@
 # Foundation, Inc., http://www.fsf.org/about/contact/.
 #
 
-import errno
+"""Flow allocation, acceptance and I/O for the Ouroboros dev API."""
+
+from __future__ import annotations
+
+import warnings
 from enum import IntFlag
-from math import modf
 from typing import Optional
 
 from _ouroboros_dev_cffi import ffi, lib
-from ouroboros.qos import *
+
+from ouroboros._qosspec import qos_to_qosspec, qosspec_to_qos
+from ouroboros._timespec import fl_to_timespec, timespec_to_fl
+from ouroboros.errors import (
+    FlowAlreadyAllocatedError,
+    FlowDeallocWarning,
+    FlowNotAllocatedError,
+    check_ouroboros_version,
+    raise_errno,
+)
+from ouroboros.qos import QoSSpec
+
+check_ouroboros_version(lib.OUROBOROS_VERSION_MAJOR,
+                        lib.OUROBOROS_VERSION_MINOR)
 
 
-def _check_ouroboros_version():
-    ouro_major = lib.OUROBOROS_VERSION_MAJOR
-    ouro_minor = lib.OUROBOROS_VERSION_MINOR
-    try:
-        from importlib.metadata import version, PackageNotFoundError
-        try:
-            pyouro_parts = version('PyOuroboros').split('.')
-        except PackageNotFoundError:
-            return  # running from source, skip check
-        if ouro_major != int(pyouro_parts[0]) or \
-                ouro_minor != int(pyouro_parts[1]):
-            raise RuntimeError(
-                f"Ouroboros version mismatch: library is "
-                f"{ouro_major}.{ouro_minor}, "
-                f"pyouroboros is "
-                f"{pyouro_parts[0]}.{pyouro_parts[1]}"
-            )
-    except ImportError:
-        pass  # Python < 3.8
-
-
-_check_ouroboros_version()
-
-# Some constants
-MILLION = 1000 * 1000
-BILLION = 1000 * 1000 * 1000
-
-
-def _fl_to_timespec(timeo: float):
-    if timeo is None:
-        return ffi.NULL
-    elif timeo <= 0:
-        return ffi.new("struct timespec *", [0, 0])
-    else:
-        frac, whole = modf(timeo)
-        _timeo = ffi.new("struct timespec *")
-        _timeo.tv_sec = int(whole)
-        _timeo.tv_nsec = int(frac * BILLION)
-        return _timeo
-
-
-def _timespec_to_fl(_timeo) -> Optional[float]:
-    if _timeo is ffi.NULL:
-        return None
-    elif _timeo.tv_sec <= 0 and _timeo.tv_nsec == 0:
-        return 0
-    else:
-        return _timeo.tv_sec + _timeo.tv_nsec / BILLION
-
-
-# Intentionally duplicated, dev uses a separate FFI (ouroboros-dev).
-def _qos_to_qosspec(qos: QoSSpec):
-    if qos is None:
-        return ffi.NULL
-    else:
-        return ffi.new("qosspec_t *",
-                       [qos.delay,
-                        qos.bandwidth,
-                        qos.availability,
-                        qos.loss,
-                        qos.ber,
-                        qos.in_order,
-                        qos.max_gap,
-                        qos.timeout])
-
-
-def _qosspec_to_qos(_qos) -> Optional[QoSSpec]:
-    if _qos is ffi.NULL:
-        return None
-    else:
-        return QoSSpec(delay=_qos.delay,
-                       bandwidth=_qos.bandwidth,
-                       availability=_qos.availability,
-                       loss=_qos.loss,
-                       ber=_qos.ber,
-                       in_order=_qos.in_order,
-                       max_gap=_qos.max_gap,
-                       timeout=_qos.timeout)
-
-# FRCT flags
-FRCT_RETRANSMIT = 0o1
-FRCT_RESCNTL    = 0o2
-FRCT_LINGER     = 0o4
-
-
-# ouroboros exceptions
-class FlowAllocatedException(Exception):
-    pass
-
-
-class FlowNotAllocatedException(Exception):
-    pass
-
-
-class FlowDownException(Exception):
-    pass
-
-
-class FlowPermissionException(Exception):
-    pass
-
-
-class FlowException(Exception):
-    pass
-
-
-class FlowDeallocWarning(Warning):
-    pass
-
-
-def _raise(e: int) -> None:
-    if e >= 0:
-        return
-
-    print("error: " + str(e))
-    if e == -errno.ETIMEDOUT:
-        raise TimeoutError()
-    if e == -errno.EINVAL:
-        raise ValueError()
-    if e == -errno.ENOMEM:
-        raise MemoryError()
-    else:
-        raise FlowException()
+class FrctFlags(IntFlag):
+    """FRCT-level feature flags."""
+    RETRANSMIT = 0o1
+    RESCNTL    = 0o2
+    LINGER     = 0o4
 
 
 class FlowProperties(IntFlag):
-    ReadOnly = 0o0
-    WriteOnly = 0o1
-    ReadWrite = 0o2
-    Down = 0o4
-    NonBlockingRead = 0o1000
-    NonBlockingWrite = 0o2000
-    NonBlocking = NonBlockingRead | NonBlockingWrite
-    NoPartialRead = 0o10000
-    NoPartialWrite = 0o200000
+    """Flags describing flow properties and blocking behaviour."""
+    READ_ONLY          = 0o0
+    WRITE_ONLY         = 0o1
+    READ_WRITE         = 0o2
+    DOWN               = 0o4
+    NON_BLOCKING_READ  = 0o1000
+    NON_BLOCKING_WRITE = 0o2000
+    NON_BLOCKING       = NON_BLOCKING_READ | NON_BLOCKING_WRITE
+    NO_PARTIAL_READ    = 0o10000
+    NO_PARTIAL_WRITE   = 0o20000
 
 
 class Flow:
+    """Represents an allocated Ouroboros flow."""
 
-    def __init__(self):
-        self.__fd: int = -1
+    def __init__(self, fd: int = -1) -> None:
+        """Construct a Flow wrapper.
 
-    def __enter__(self):
+        :param fd: Existing flow descriptor to wrap, or -1 for an
+                   unallocated Flow that will be populated by
+                   :meth:`alloc`, :meth:`accept` or :meth:`join`.
+        """
+        self._fd: int = fd
+
+    def __enter__(self) -> Flow:
         return self
 
-    def __exit__(self, exc_type, exc_value, tb):
-        lib.flow_dealloc(self.__fd)
+    def __exit__(self, exc_type, exc_value, tb) -> None:
+        self.dealloc()
+
+    def __del__(self) -> None:
+        try:
+            self.dealloc()
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass  # interpreter shutdown may have torn down lib already
+
+    def __repr__(self) -> str:
+        return f"Flow(fd={self._fd})"
+
+    def fileno(self) -> int:
+        """Return the underlying ouroboros flow descriptor."""
+        return self._fd
 
     def alloc(self,
               dst: str,
-              qos: QoSSpec = None,
-              timeo: float = None) -> Optional[QoSSpec]:
+              qos: Optional[QoSSpec] = None,
+              timeo: Optional[float] = None) -> Optional[QoSSpec]:
+        """Allocate a flow with a certain QoS to a destination.
+
+        :param dst:   Destination name.
+        :param qos:   Requested QoS.
+        :param timeo: Allocation timeout (None blocks forever, 0 is async).
+        :return:      The QoS the IRM granted for the new flow.
         """
-        Allocates a flow with a certain QoS to a destination
+        if self._fd >= 0:
+            raise FlowAlreadyAllocatedError()
 
-        :param dst:   The destination name (string)
-        :param qos:   The QoS for the requested flow (QoSSpec)
-        :param timeo: The timeout for the flow allocation (None -> forever, 0->async)
-        :return:      The QoS for the new flow
-        """
+        _qos = qos_to_qosspec(ffi, qos)
+        _timeo = fl_to_timespec(ffi, timeo)
 
-        if self.__fd >= 0:
-            raise FlowAllocatedException()
+        rc = lib.flow_alloc(dst.encode(), _qos, _timeo)
+        raise_errno(rc)
+        self._fd = rc
 
-        _qos = _qos_to_qosspec(qos)
-
-        _timeo = _fl_to_timespec(timeo)
-
-        self.__fd = lib.flow_alloc(dst.encode(), _qos, _timeo)
-
-        _raise(self.__fd)
-
-        return _qosspec_to_qos(_qos)
+        return qosspec_to_qos(ffi, _qos)
 
     def accept(self,
-               timeo: float = None) -> QoSSpec:
-        """
-        Accepts new flows and returns the QoS
+               timeo: Optional[float] = None) -> Optional[QoSSpec]:
+        """Accept an incoming flow and return its QoS.
 
-        :param timeo: The timeout for the flow allocation (None -> forever, 0->async)
-        :return:      The QoS for the new flow
+        :param timeo: Accept timeout (None blocks forever, 0 is async).
+        :return:      The QoS of the accepted flow.
         """
-
-        if self.__fd >= 0:
-            raise FlowAllocatedException()
+        if self._fd >= 0:
+            raise FlowAlreadyAllocatedError()
 
         _qos = ffi.new("qosspec_t *")
+        _timeo = fl_to_timespec(ffi, timeo)
 
-        _timeo = _fl_to_timespec(timeo)
+        rc = lib.flow_accept(_qos, _timeo)
+        raise_errno(rc)
+        self._fd = rc
 
-        self.__fd = lib.flow_accept(_qos, _timeo)
-
-        _raise(self.__fd)
-
-        return _qosspec_to_qos(_qos)
+        return qosspec_to_qos(ffi, _qos)
 
     def join(self,
              dst: str,
-             timeo: float = None) -> None:
+             timeo: Optional[float] = None) -> None:
+        """Join a broadcast layer.
+
+        :param dst:   Destination broadcast layer name.
+        :param timeo: Join timeout (None blocks forever, 0 is async).
         """
-        Join a broadcast layer
+        if self._fd >= 0:
+            raise FlowAlreadyAllocatedError()
 
-        :param dst:   The destination broadcast layer name (string)
-        :param qos:   The QoS for the requested flow (QoSSpec)
-        :param timeo: The timeout for the flow allocation (None -> forever, 0->async)
-        :return:      The QoS for the flow
-        """
+        _timeo = fl_to_timespec(ffi, timeo)
 
-        if self.__fd >= 0:
-            raise FlowAllocatedException()
+        rc = lib.flow_join(dst.encode(), _timeo)
+        raise_errno(rc)
+        self._fd = rc
 
-        _timeo = _fl_to_timespec(timeo)
-
-        self.__fd = lib.flow_join(dst.encode(), _timeo)
-
-        _raise(self.__fd)
-
-    def dealloc(self):
-        """
-        Deallocate a flow
-
-        """
-
-        self.__fd = lib.flow_dealloc(self.__fd)
-
-        if self.__fd < 0:
-            raise FlowDeallocWarning
-
-        self.__fd = -1
+    def dealloc(self) -> None:
+        """Deallocate this flow. Idempotent: a no-op on an unallocated flow."""
+        if self._fd < 0:
+            return
+        rc = lib.flow_dealloc(self._fd)
+        self._fd = -1
+        if rc < 0:
+            warnings.warn(f"flow_dealloc returned {rc}",
+                          FlowDeallocWarning, stacklevel=2)
 
     def write(self,
               buf: bytes,
-              count: int = None) -> int:
-        """
-        Attempt to write <count> bytes to a flow
+              count: Optional[int] = None) -> int:
+        """Write up to *count* bytes to the flow.
 
-        :param buf:    Buffer to write from
-        :param count:  Number of bytes to write from the buffer
-        :return:       Number of bytes written
+        :param buf:   Buffer to write from.
+        :param count: Number of bytes to write (defaults to ``len(buf)``).
+        :return:      Number of bytes written.
+        :raises FlowError: (or subclass) on negative ouroboros return codes.
         """
-
-        if self.__fd < 0:
-            raise FlowNotAllocatedException()
+        if self._fd < 0:
+            raise FlowNotAllocatedError()
 
         if count is None:
-            return lib.flow_write(self.__fd, ffi.from_buffer(buf), len(buf))
+            count = len(buf)
 
-        return lib.flow_write(self.__fd, ffi.from_buffer(buf), count)
+        rc = lib.flow_write(self._fd, ffi.from_buffer(buf), count)
+        return raise_errno(rc)
 
     def writeline(self,
                   ln: str) -> int:
+        """Encode *ln* as UTF-8 and write it to the flow.
+
+        :param ln: String to write.
+        :return:   Number of bytes written.
         """
-        Attempt to write a string to a flow
+        if self._fd < 0:
+            raise FlowNotAllocatedError()
 
-        :param ln:  String to write
-        :return:    Number of bytes written
-        """
-
-        if self.__fd < 0:
-            raise FlowNotAllocatedException()
-
-        return self.write(ln.encode(), len(ln))
+        data = ln.encode()
+        return self.write(data, len(data))
 
     def read(self,
-             count: int = None) -> bytes:
-        """
-        Attempt to read bytes from a flow
+             count: Optional[int] = None) -> bytes:
+        """Read up to *count* bytes from the flow.
 
-        :param count:   Maximum number of bytes to read
-        :return:        Bytes read
+        :param count: Maximum number of bytes to read (default 2048).
+        :return:      Bytes read (may be empty when an SDU was just
+                      fully consumed by a previous matching read).
+        :raises FlowError: (or subclass) on negative ouroboros return codes.
         """
-
-        if self.__fd < 0:
-            raise FlowNotAllocatedException()
+        if self._fd < 0:
+            raise FlowNotAllocatedError()
 
         if count is None:
             count = 2048
 
         _buf = ffi.new("char []", count)
 
-        result = lib.flow_read(self.__fd, _buf, count)
+        rc = lib.flow_read(self._fd, _buf, count)
+        raise_errno(rc)
 
-        return ffi.unpack(_buf, result)
+        return ffi.unpack(_buf, rc)
 
-    def readline(self):
-        """
-
-        :return: A string
-        """
-        if self.__fd < 0:
-            raise FlowNotAllocatedException()
+    def readline(self) -> str:
+        """Read from the flow and decode the result as UTF-8."""
+        if self._fd < 0:
+            raise FlowNotAllocatedError()
 
         return self.read().decode()
 
-    # flow manipulation
-    def set_snd_timeout(self,
-                        timeo: float):
-        """
-        Set the timeout for blocking writes
-        """
-        _timeo = _fl_to_timespec(timeo)
+    def set_snd_timeout(self, timeo: float) -> None:
+        """Set the timeout for blocking writes (seconds)."""
+        _timeo = fl_to_timespec(ffi, timeo)
+        raise_errno(lib.flow_set_snd_timeout(self._fd, _timeo))
 
-        if lib.flow_set_snd_timeout(self.__fd, _timeo) != 0:
-            raise FlowPermissionException()
-
-    def get_snd_timeout(self) -> float:
-        """
-        Get the timeout for blocking writes
-
-        :return: timeout for blocking writes
-        """
+    def get_snd_timeout(self) -> Optional[float]:
+        """Return the timeout for blocking writes (seconds)."""
         _timeo = ffi.new("struct timespec *")
+        raise_errno(lib.flow_get_snd_timeout(self._fd, _timeo))
+        return timespec_to_fl(ffi, _timeo)
 
-        if lib.flow_get_snd_timeout(self.__fd, _timeo) != 0:
-            raise FlowPermissionException()
+    def set_rcv_timeout(self, timeo: float) -> None:
+        """Set the timeout for blocking reads (seconds)."""
+        _timeo = fl_to_timespec(ffi, timeo)
+        raise_errno(lib.flow_set_rcv_timeout(self._fd, _timeo))
 
-        return _timespec_to_fl(_timeo)
-
-    def set_rcv_timeout(self,
-                        timeo: float):
-        """
-        Set the timeout for blocking writes
-        """
-        _timeo = _fl_to_timespec(timeo)
-
-        if lib.flow_set_rcv_timeout(self.__fd, _timeo) != 0:
-            raise FlowPermissionException()
-
-    def get_rcv_timeout(self) -> float:
-        """
-        Get the timeout for blocking reads
-
-        :return: timeout for blocking writes
-        """
+    def get_rcv_timeout(self) -> Optional[float]:
+        """Return the timeout for blocking reads (seconds)."""
         _timeo = ffi.new("struct timespec *")
+        raise_errno(lib.flow_get_rcv_timeout(self._fd, _timeo))
+        return timespec_to_fl(ffi, _timeo)
 
-        if lib.flow_get_rcv_timeout(self.__fd, _timeo) != 0:
-            raise FlowPermissionException()
-
-        return _timespec_to_fl(_timeo)
-
-    def get_qos(self) -> QoSSpec:
-        """
-
-        :return: Current QoS on the flow
-        """
+    def get_qos(self) -> Optional[QoSSpec]:
+        """Return the current QoS in effect on the flow."""
         _qos = ffi.new("qosspec_t *")
-
-        if lib.flow_get_qos(self.__fd, _qos) != 0:
-            raise FlowPermissionException()
-
-        return _qosspec_to_qos(_qos)
+        raise_errno(lib.flow_get_qos(self._fd, _qos))
+        return qosspec_to_qos(ffi, _qos)
 
     def get_rx_queue_len(self) -> int:
-        """
-
-        :return:
-        """
-
+        """Return the receive queue length (bytes)."""
         size = ffi.new("size_t *")
-
-        if lib.flow_get_rx_qlen(self.__fd, size) != 0:
-            raise FlowPermissionException()
-
-        return int(size)
+        raise_errno(lib.flow_get_rx_qlen(self._fd, size))
+        return int(size[0])
 
     def get_tx_queue_len(self) -> int:
-        """
-
-        :return:
-        """
-
+        """Return the transmit queue length (bytes)."""
         size = ffi.new("size_t *")
+        raise_errno(lib.flow_get_tx_qlen(self._fd, size))
+        return int(size[0])
 
-        if lib.flow_get_tx_qlen(self.__fd, size) != 0:
-            raise FlowPermissionException()
+    def get_mtu(self) -> int:
+        """Return the per-packet MTU.
 
-        return int(size)
-
-    def set_flags(self, flags: FlowProperties):
+        This is the maximum user payload that fits in one n-1 PDU,
+        after crypto headers. Returns 0 if unknown.
         """
-        Set flags for this flow.
-        :param flags:
-        """
+        mtu = ffi.new("size_t *")
+        raise_errno(lib.flow_get_mtu(self._fd, mtu))
+        return int(mtu[0])
 
-        if lib.flow_set_flags(self.__fd, int(flags)):
-            raise FlowPermissionException()
+    def set_flags(self, flags: FlowProperties) -> None:
+        """Replace the full set of flags for this flow.
+
+        .. warning::
+            This OVERWRITES the entire ``oflags`` value, including
+            the access-mode bits (``READ_ONLY`` / ``WRITE_ONLY`` /
+            ``READ_WRITE``). Passing only ``NO_PARTIAL_READ`` (for
+            example) silently downgrades the flow to read-only and
+            subsequent writes will fail with :class:`FlowPermissionError`.
+
+            To preserve the existing access mode use
+            :meth:`add_flags` / :meth:`remove_flags`, or read the
+            current flags with :meth:`get_flags` and OR in the new
+            bits explicitly.
+
+        :param flags: Bitmask of :class:`FlowProperties` values.
+        """
+        raise_errno(lib.flow_set_flags(self._fd, int(flags)))
+
+    def add_flags(self, flags: FlowProperties) -> None:
+        """OR *flags* into the current ``oflags`` value.
+
+        Preserves the access mode and any other already-set bits.
+        """
+        current = self.get_flags()
+        self.set_flags(current | FlowProperties(int(flags)))
+
+    def remove_flags(self, flags: FlowProperties) -> None:
+        """Clear *flags* from the current ``oflags`` value.
+
+        Preserves every other bit (including the access mode).
+        """
+        current = self.get_flags()
+        self.set_flags(current & ~FlowProperties(int(flags)))
 
     def get_flags(self) -> FlowProperties:
-        """
-        Get the flags for this flow
-        """
-
-        flags = lib.flow_get_flags(self.__fd)
-        if flags < 0:
-            raise FlowPermissionException()
-
+        """Return the current flags for this flow."""
+        flags = raise_errno(lib.flow_get_flags(self._fd))
         return FlowProperties(int(flags))
 
-    def set_frct_flags(self, flags: int):
+    def set_frct_flags(self, flags: FrctFlags) -> None:
+        """Set FRCT flags for this flow.
+
+        :param flags: Bitmask of :class:`FrctFlags`.
         """
-        Set FRCT flags for this flow.
-        :param flags: Bitmask of FRCT_RETRANSMIT, FRCT_RESCNTL, FRCT_LINGER
-        """
+        raise_errno(lib.flow_set_frct_flags(self._fd, int(flags)))
 
-        if lib.flow_set_frct_flags(self.__fd, flags):
-            raise FlowPermissionException()
+    def get_frct_flags(self) -> FrctFlags:
+        """Return the FRCT flags for this flow."""
+        flags = raise_errno(lib.flow_get_frct_flags(self._fd))
+        return FrctFlags(int(flags))
 
-    def get_frct_flags(self) -> int:
-        """
-        Get the FRCT flags for this flow
+    def set_frct_max_sdu(self, size: int) -> None:
+        """Set the maximum reassembly SDU size for FRCT (bytes)."""
+        raise_errno(lib.flow_set_frct_max_sdu(self._fd, size))
 
-        :return: Bitmask of FRCT flags
-        """
+    def get_frct_max_sdu(self) -> int:
+        """Return the maximum reassembly SDU size for FRCT (bytes)."""
+        size = ffi.new("size_t *")
+        raise_errno(lib.flow_get_frct_max_sdu(self._fd, size))
+        return int(size[0])
 
-        flags = lib.flow_get_frct_flags(self.__fd)
-        if flags < 0:
-            raise FlowPermissionException()
+    def set_frct_rcv_ring_size(self, size: int) -> None:
+        """Set the stream receive ring size (bytes, power of two)."""
+        raise_errno(lib.flow_set_frct_rcv_ring_sz(self._fd, size))
 
-        return int(flags)
+    def get_frct_rcv_ring_size(self) -> int:
+        """Return the stream receive ring size (bytes)."""
+        size = ffi.new("size_t *")
+        raise_errno(lib.flow_get_frct_rcv_ring_sz(self._fd, size))
+        return int(size[0])
+
+    def set_frct_rto_min(self, rto_ns: int) -> None:
+        """Set the FRCT RTO floor (nanoseconds)."""
+        raise_errno(lib.flow_set_frct_rto_min(self._fd, rto_ns))
+
+    def get_frct_rto_min(self) -> int:
+        """Return the FRCT RTO floor (nanoseconds)."""
+        rto = ffi.new("time_t *")
+        raise_errno(lib.flow_get_frct_rto_min(self._fd, rto))
+        return int(rto[0])
 
 
 def flow_alloc(dst: str,
-               qos: QoSSpec = None,
-               timeo: float = None) -> Flow:
-    """
+               qos: Optional[QoSSpec] = None,
+               timeo: Optional[float] = None) -> Flow:
+    """Allocate a new flow and return the :class:`Flow` wrapper.
 
-    :param dst:    Destination name
-    :param qos:    Requested QoS
-    :param timeo:  Timeout to wait for the allocation
-    :return:       A new Flow()
+    :param dst:   Destination name.
+    :param qos:   Requested QoS.
+    :param timeo: Allocation timeout (None blocks forever, 0 is async).
     """
-
     f = Flow()
     f.alloc(dst, qos, timeo)
     return f
 
 
-def flow_accept(timeo: float = None) -> Flow:
-    """
+def flow_accept(timeo: Optional[float] = None) -> Flow:
+    """Accept an incoming flow and return the :class:`Flow` wrapper.
 
-    :param timeo:  Timeout to wait for the allocation
-    :return:       A new Flow()
+    :param timeo: Accept timeout (None blocks forever, 0 is async).
     """
-
     f = Flow()
     f.accept(timeo)
     return f
 
 
 def flow_join(dst: str,
-              qos: QoSSpec = None,
-              timeo: float = None) -> Flow:
-    """
+              timeo: Optional[float] = None) -> Flow:
+    """Join a broadcast layer and return the :class:`Flow` wrapper.
 
-    :param dst:    Broadcast layer name
-    :param qos:    Requested QoS
-    :param timeo:  Timeout to wait for the allocation
-    :return:       A new Flow()
+    :param dst:   Broadcast layer name.
+    :param timeo: Join timeout (None blocks forever, 0 is async).
     """
-
     f = Flow()
-    f.join(dst, qos, timeo)
+    f.join(dst, timeo)
     return f

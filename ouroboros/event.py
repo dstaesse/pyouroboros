@@ -19,130 +19,137 @@
 # Foundation, Inc., http://www.fsf.org/about/contact/.
 #
 
-from ouroboros.dev import *
-from ouroboros.dev import _fl_to_timespec
+"""Asynchronous flow event monitoring for Ouroboros."""
 
+from __future__ import annotations
 
-# async API
-class FlowEventError(Exception):
-    pass
+from enum import IntFlag
+from typing import List, Optional, Tuple
+
+from _ouroboros_dev_cffi import ffi, lib
+
+from ouroboros._timespec import fl_to_timespec
+from ouroboros.dev import Flow
+from ouroboros.errors import FlowEventError, raise_errno
 
 
 class FEventType(IntFlag):
-    FlowPkt = lib.FLOW_PKT
-    FlowDown = lib.FLOW_DOWN
-    FlowUp = lib.FLOW_UP
-    FlowAlloc = lib.FLOW_ALLOC
-    FlowDealloc = lib.FLOW_DEALLOC
-    FlowPeer = lib.FLOW_PEER
+    """Types of flow events."""
+    FLOW_PKT     = lib.FLOW_PKT
+    FLOW_DOWN    = lib.FLOW_DOWN
+    FLOW_UP      = lib.FLOW_UP
+    FLOW_ALLOC   = lib.FLOW_ALLOC
+    FLOW_DEALLOC = lib.FLOW_DEALLOC
+    FLOW_PEER    = lib.FLOW_PEER
 
 
 class FEventQueue:
-    """
-    A queue of events waiting to be handled
-    """
+    """A queue of flow events waiting to be drained."""
 
-    def __init__(self):
-        self.__fq = lib.fqueue_create()
-        if self.__fq is ffi.NULL:
+    def __init__(self) -> None:
+        self._fq = lib.fqueue_create()
+        if self._fq == ffi.NULL:
             raise MemoryError("Failed to create FEventQueue")
 
-    def __del__(self):
-        lib.fqueue_destroy(self.__fq)
+    def __enter__(self) -> FEventQueue:
+        return self
 
-    def next(self):
+    def __exit__(self, exc_type, exc_value, tb) -> None:
+        self.destroy()
+
+    def __del__(self) -> None:
+        self.destroy()
+
+    def destroy(self) -> None:
+        """Destroy the underlying queue. Idempotent."""
+        if self._fq != ffi.NULL:
+            lib.fqueue_destroy(self._fq)
+            self._fq = ffi.NULL
+
+    def next(self) -> Tuple[Flow, FEventType]:
+        """Return the next ``(flow, event_type)`` pair from the queue."""
+        fd = lib.fqueue_next(self._fq)
+        raise_errno(fd, default=FlowEventError)
+
+        _type = lib.fqueue_type(self._fq)
+        raise_errno(_type, default=FlowEventError)
+
+        return Flow(fd), FEventType(_type)
+
+    @property
+    def handle(self):
+        """Return the underlying ``fqueue_t *``.
+
+        Intended for use by :meth:`FlowSet.wait` within the same
+        package; not part of the user-facing API.
         """
-        Get the next event
-        :return: Flow and eventtype on that flow
-        """
-        f = Flow()
-        f._Flow__fd = lib.fqueue_next(self.__fq)
-        if f._Flow__fd < 0:
-            raise FlowEventError
-
-        _type = lib.fqueue_type(self.__fq)
-        if _type < 0:
-            raise FlowEventError
-
-        return f, _type
+        return self._fq
 
 
 class FlowSet:
-    """
-    A set of flows that can be monitored for events
-    """
-    def __init__(self,
-                 flows: [Flow] = None):
+    """A set of flows that can be monitored for events."""
 
-        self.__set = lib.fset_create()
-        if self.__set is ffi.NULL:
+    def __init__(self, flows: Optional[List[Flow]] = None) -> None:
+        self._set = lib.fset_create()
+        if self._set == ffi.NULL:
             raise MemoryError("Failed to create FlowSet")
 
         if flows is not None:
             for flow in flows:
-                if lib.fset_add(self.__set, flow._Flow__fd) != 0:
-                    lib.fset_destroy(self.__set)
-                    self.__set = ffi.NULL
-                    raise MemoryError("Failed to add flow " + str(flow._Flow__fd) + ".")
+                if lib.fset_add(self._set, flow.fileno()) != 0:
+                    lib.fset_destroy(self._set)
+                    self._set = ffi.NULL
+                    raise MemoryError(f"Failed to add flow {flow.fileno()}.")
 
-    def __enter__(self):
+    def __enter__(self) -> FlowSet:
         return self
 
-    def __exit__(self, exc_type, exc_value, tb):
-        lib.fset_destroy(self.__set)
+    def __exit__(self, exc_type, exc_value, tb) -> None:
+        self.destroy()
 
-    def add(self,
-            flow: Flow):
-        """
-        Add a Flow
+    def __del__(self) -> None:
+        self.destroy()
 
-        :param flow: The flow object to add
-        """
+    def destroy(self) -> None:
+        """Destroy the underlying set. Idempotent."""
+        if self._set != ffi.NULL:
+            lib.fset_destroy(self._set)
+            self._set = ffi.NULL
 
-        if self.__set is ffi.NULL:
-            raise ValueError
+    def add(self, flow: Flow) -> None:
+        """Add *flow* to this set."""
+        if self._set == ffi.NULL:
+            raise ValueError("FlowSet has been destroyed")
 
-        if lib.fset_add(self.__set, flow._Flow__fd) != 0:
-            raise MemoryError("Failed to add flow")
+        if lib.fset_add(self._set, flow.fileno()) != 0:
+            raise MemoryError(f"Failed to add flow {flow.fileno()}")
 
-    def zero(self):
-        """
-        Remove all Flows from this set
-        """
+    def zero(self) -> None:
+        """Remove all flows from this set."""
+        if self._set == ffi.NULL:
+            raise ValueError("FlowSet has been destroyed")
 
-        if self.__set is ffi.NULL:
-            raise ValueError
+        lib.fset_zero(self._set)
 
-        lib.fset_zero(self.__set)
+    def remove(self, flow: Flow) -> None:
+        """Remove *flow* from this set."""
+        if self._set == ffi.NULL:
+            raise ValueError("FlowSet has been destroyed")
 
-    def remove(self,
-               flow: Flow):
-        """
-        Remove a flow from a set
-
-        :param flow:
-        """
-
-        if self.__set is ffi.NULL:
-            raise ValueError
-
-        lib.fset_del(self.__set, flow._Flow__fd)
+        lib.fset_del(self._set, flow.fileno())
 
     def wait(self,
-             fq: FEventType,
-             timeo: float = None):
+             fq: FEventQueue,
+             timeo: Optional[float] = None) -> None:
+        """Wait for at least one event on one of the monitored flows.
+
+        :param fq:    The :class:`FEventQueue` to drain events into.
+        :param timeo: Wait timeout in seconds (None blocks forever).
         """
-        Wait for at least one event on one of the monitored flows
-        """
+        if self._set == ffi.NULL:
+            raise ValueError("FlowSet has been destroyed")
 
-        if self.__set is ffi.NULL:
-            raise ValueError
+        _timeo = fl_to_timespec(ffi, timeo)
 
-        _timeo = _fl_to_timespec(timeo)
-
-        ret = lib.fevent(self.__set, fq._FEventQueue__fq, _timeo)
-        if ret < 0:
-            raise FlowEventError
-
-    def destroy(self):
-        lib.fset_destroy(self.__set)
+        rc = lib.fevent(self._set, fq.handle, _timeo)
+        raise_errno(rc, default=FlowEventError)
