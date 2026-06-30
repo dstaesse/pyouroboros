@@ -211,8 +211,8 @@ class IpcpConfig:
 
 @dataclass
 class NameSecPaths:
-    """Security paths for a name (encryption, key, certificate)."""
-    enc: str = ""
+    """Security paths for a name (security config, key, certificate)."""
+    sec: str = ""
     key: str = ""
     crt: str = ""
 
@@ -303,7 +303,7 @@ def _name_info_to_c(info: NameInfo):
 
     for attr, sec in (('s', info.server_sec), ('c', info.client_sec)):
         sec_paths = getattr(_info, attr)
-        for fld in ('enc', 'key', 'crt'):
+        for fld in ('sec', 'key', 'crt'):
             val = getattr(sec, fld).encode()
             ffi.memmove(getattr(sec_paths, fld), val,
                         min(len(val), 511))
@@ -512,12 +512,12 @@ def list_names() -> List[NameInfo]:
             name=ffi.string(info.name).decode(),
             pol_lb=LoadBalancePolicy(info.pol_lb),
             server_sec=NameSecPaths(
-                enc=ffi.string(info.s.enc).decode(),
+                sec=ffi.string(info.s.sec).decode(),
                 key=ffi.string(info.s.key).decode(),
                 crt=ffi.string(info.s.crt).decode(),
             ),
             client_sec=NameSecPaths(
-                enc=ffi.string(info.c.enc).decode(),
+                sec=ffi.string(info.c.sec).decode(),
                 key=ffi.string(info.c.key).decode(),
                 crt=ffi.string(info.c.crt).decode(),
             ),

@@ -201,7 +201,7 @@ enum pol_balance {
 };
 
 struct name_sec_paths {
-        char enc[512]; /* NAME_PATH_SIZE + 1 */
+        char sec[512]; /* NAME_PATH_SIZE + 1 */
         char key[512]; /* NAME_PATH_SIZE + 1 */
         char crt[512]; /* NAME_PATH_SIZE + 1 */
 };
