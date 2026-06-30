@@ -57,6 +57,11 @@ int flow_get_tx_qlen(int fd, size_t * sz)
         return fccntl(fd, FLOWGTXQLEN, sz);
 }
 
+int flow_get_mtu(int fd, size_t * mtu)
+{
+        return fccntl(fd, FLOWGMTU, mtu);
+}
+
 int flow_set_flags(int fd, uint32_t flags)
 {
         return fccntl(fd, FLOWSFLAGS, flags);
@@ -85,4 +90,34 @@ int flow_get_frct_flags(int fd)
                 return -EPERM;
 
         return (int) flags;
+}
+
+int flow_set_frct_max_sdu(int fd, size_t max)
+{
+        return fccntl(fd, FRCTSMAXSDU, max);
+}
+
+int flow_get_frct_max_sdu(int fd, size_t * max)
+{
+        return fccntl(fd, FRCTGMAXSDU, max);
+}
+
+int flow_set_frct_rcv_ring_sz(int fd, size_t sz)
+{
+        return fccntl(fd, FRCTSRRINGSZ, sz);
+}
+
+int flow_get_frct_rcv_ring_sz(int fd, size_t * sz)
+{
+        return fccntl(fd, FRCTGRRINGSZ, sz);
+}
+
+int flow_set_frct_rto_min(int fd, time_t rto_ns)
+{
+        return fccntl(fd, FRCTSRTOMIN, rto_ns);
+}
+
+int flow_get_frct_rto_min(int fd, time_t * rto_ns)
+{
+        return fccntl(fd, FRCTGRTOMIN, rto_ns);
 }

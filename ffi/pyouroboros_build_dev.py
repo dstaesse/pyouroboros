@@ -19,6 +19,11 @@
 # Foundation, Inc., http://www.fsf.org/about/contact/.
 #
 
+"""CFFI build script for the ouroboros-dev library."""
+
+# qosspec_t / timespec cdef is duplicated in the irm builder per CFFI module.
+# pylint: disable=duplicate-code
+
 from cffi import FFI
 
 ffibuilder: FFI = FFI()
@@ -40,12 +45,12 @@ struct timespec {
 
 /* OUROBOROS QOS.H */
 typedef struct qos_spec {
+        uint8_t  service;
         uint32_t delay;
         uint64_t bandwidth;
         uint8_t  availability;
         uint32_t loss;
         uint32_t ber;
-        uint8_t  in_order;
         uint32_t max_gap;
         uint32_t timeout;       /* Timeout in ms */
 } qosspec_t;
@@ -89,6 +94,8 @@ int flow_get_rx_qlen(int fd, size_t * sz);
 
 int flow_get_tx_qlen(int fd, size_t * sz);
 
+int flow_get_mtu(int fd, size_t * mtu);
+
 int flow_set_flags(int fd, uint32_t flags);
 
 int flow_get_flags(int fd);
@@ -96,6 +103,18 @@ int flow_get_flags(int fd);
 int flow_set_frct_flags(int fd, uint16_t flags);
 
 int flow_get_frct_flags(int fd);
+
+int flow_set_frct_max_sdu(int fd, size_t max);
+
+int flow_get_frct_max_sdu(int fd, size_t * max);
+
+int flow_set_frct_rcv_ring_sz(int fd, size_t sz);
+
+int flow_get_frct_rcv_ring_sz(int fd, size_t * sz);
+
+int flow_set_frct_rto_min(int fd, time_t rto_ns);
+
+int flow_get_frct_rto_min(int fd, time_t * rto_ns);
 
 /* OUROBOROS FQUEUE.H */
 enum fqtype {

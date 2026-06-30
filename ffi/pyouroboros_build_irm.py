@@ -19,6 +19,11 @@
 # Foundation, Inc., http://www.fsf.org/about/contact/.
 #
 
+"""CFFI build script for the ouroboros-irm library."""
+
+# qosspec_t / timespec cdef is duplicated in the dev builder per CFFI module.
+# pylint: disable=duplicate-code
+
 from cffi import FFI
 
 ffibuilder: FFI = FFI()
@@ -45,12 +50,12 @@ struct in6_addr { ...; };
 
 /* OUROBOROS QOS.H */
 typedef struct qos_spec {
+        uint8_t  service;
         uint32_t delay;
         uint64_t bandwidth;
         uint8_t  availability;
         uint32_t loss;
         uint32_t ber;
-        uint8_t  in_order;
         uint32_t max_gap;
         uint32_t timeout;       /* Timeout in ms */
 } qosspec_t;
@@ -232,13 +237,13 @@ int     irm_bootstrap_ipcp(pid_t                      pid,
                            const struct ipcp_config * conf);
 
 int     irm_connect_ipcp(pid_t        pid,
-                         const char * component,
                          const char * dst,
+                         const char * component,
                          qosspec_t    qs);
 
 int     irm_disconnect_ipcp(pid_t        pid,
-                            const char * component,
-                            const char * dst);
+                            const char * dst,
+                            const char * component);
 
 int     irm_bind_program(const char * prog,
                          const char * name,
