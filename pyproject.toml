@@ -21,3 +21,17 @@ Homepage = "https://ouroboros.rocks"
 packages = ["ouroboros"]
 
 [tool.setuptools_scm]
+
+[tool.pylint.main]
+extension-pkg-allow-list = ["_ouroboros_dev_cffi", "_ouroboros_irm_cffi"]
+ignored-modules = ["setuptools_scm", "_ouroboros_dev_cffi", "_ouroboros_irm_cffi"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.design]
+max-args = 10
+max-positional-arguments = 10
+max-attributes = 10
+max-public-methods = 30
+
