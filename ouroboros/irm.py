@@ -1,31 +1,17 @@
 #
-# Ouroboros - Copyright (C) 2016 - 2026
-#
-# Python API for Ouroboros - IRM
-#
-#    Dimitri Staessens <dimitri@ouroboros.rocks>
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public License
-# version 2.1 as published by the Free Software Foundation.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public
-# License along with this library; if not, write to the Free Software
-# Foundation, Inc., http://www.fsf.org/about/contact/.
+# SPDX-FileCopyrightText: 2016 - 2026 Dimitri Staessens
+# SPDX-License-Identifier: LGPL-2.1-only
 #
 
-"""IRM (IPC Resource Manager) bindings for Ouroboros."""
+"""
+IRM (IPC Resource Manager) bindings for Ouroboros.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from _ouroboros_irm_cffi import ffi, lib
 
@@ -47,11 +33,17 @@ from ouroboros.qos import QoSSpec
 check_ouroboros_version(lib.OUROBOROS_VERSION_MAJOR,
                         lib.OUROBOROS_VERSION_MINOR)
 
+BIND_AUTO = lib.BIND_AUTO
 
-# --- Enumerations ---
+DT_COMP   = "Data Transfer"
+MGMT_COMP = "Management"
+
 
 class IpcpType(IntEnum):
-    """IPCP types available in Ouroboros."""
+    """
+    IPCP types available in Ouroboros.
+    """
+
     LOCAL     = lib.IPCP_LOCAL
     UNICAST   = lib.IPCP_UNICAST
     BROADCAST = lib.IPCP_BROADCAST
@@ -62,35 +54,53 @@ class IpcpType(IntEnum):
 
 
 class AddressAuthPolicy(IntEnum):
-    """Address authority policies for unicast IPCPs."""
+    """
+    Address authority policies for unicast IPCPs.
+    """
+
     FLAT_RANDOM = lib.ADDR_AUTH_FLAT_RANDOM
 
 
 class LinkStatePolicy(IntEnum):
-    """Link state routing policies."""
+    """
+    Link state routing policies.
+    """
+
     SIMPLE = lib.LS_SIMPLE
     LFA    = lib.LS_LFA
     ECMP   = lib.LS_ECMP
 
 
 class RoutingPolicy(IntEnum):
-    """Routing policies."""
+    """
+    Routing policies.
+    """
+
     LINK_STATE = lib.ROUTING_LINK_STATE
 
 
 class CongestionAvoidPolicy(IntEnum):
-    """Congestion avoidance policies."""
+    """
+    Congestion avoidance policies.
+    """
+
     NONE   = lib.CA_NONE
     MB_ECN = lib.CA_MB_ECN
 
 
 class DirectoryPolicy(IntEnum):
-    """Directory policies."""
+    """
+    Directory policies.
+    """
+
     DHT = lib.DIR_DHT
 
 
 class DirectoryHashAlgo(IntEnum):
-    """Directory hash algorithms."""
+    """
+    Directory hash algorithms.
+    """
+
     SHA3_224 = lib.DIR_HASH_SHA3_224
     SHA3_256 = lib.DIR_HASH_SHA3_256
     SHA3_384 = lib.DIR_HASH_SHA3_384
@@ -98,23 +108,20 @@ class DirectoryHashAlgo(IntEnum):
 
 
 class LoadBalancePolicy(IntEnum):
-    """Load balancing policies for names."""
+    """
+    Load balancing policies for names.
+    """
+
     ROUND_ROBIN = lib.LB_RR
     SPILL       = lib.LB_SPILL
 
 
-BIND_AUTO = lib.BIND_AUTO
-
-# Unicast IPCP component names
-DT_COMP   = "Data Transfer"
-MGMT_COMP = "Management"
-
-
-# --- Configuration classes ---
-
 @dataclass
 class LinkStateConfig:
-    """Configuration for link state routing."""
+    """
+    Configuration for link state routing.
+    """
+
     pol: LinkStatePolicy = LinkStatePolicy.SIMPLE
     t_recalc: int = 4
     t_update: int = 15
@@ -123,14 +130,20 @@ class LinkStateConfig:
 
 @dataclass
 class RoutingConfig:
-    """Routing configuration."""
+    """
+    Routing configuration.
+    """
+
     pol: RoutingPolicy = RoutingPolicy.LINK_STATE
     ls: LinkStateConfig = field(default_factory=LinkStateConfig)
 
 
 @dataclass
 class DtConfig:
-    """Data transfer configuration for unicast IPCPs."""
+    """
+    Data transfer configuration for unicast IPCPs.
+    """
+
     addr_size: int = 4
     eid_size: int = 8
     max_ttl: int = 60
@@ -139,7 +152,10 @@ class DtConfig:
 
 @dataclass
 class DhtConfig:
-    """DHT directory configuration."""
+    """
+    DHT directory configuration.
+    """
+
     alpha: int = 3
     k: int = 8
     t_expire: int = 86400
@@ -149,14 +165,20 @@ class DhtConfig:
 
 @dataclass
 class DirConfig:
-    """Directory configuration."""
+    """
+    Directory configuration.
+    """
+
     pol: DirectoryPolicy = DirectoryPolicy.DHT
     dht: DhtConfig = field(default_factory=DhtConfig)
 
 
 @dataclass
 class UnicastConfig:
-    """Configuration for unicast IPCPs."""
+    """
+    Configuration for unicast IPCPs.
+    """
+
     dt: DtConfig = field(default_factory=DtConfig)
     dir: DirConfig = field(default_factory=DirConfig)
     addr_auth: AddressAuthPolicy = AddressAuthPolicy.FLAT_RANDOM
@@ -165,14 +187,20 @@ class UnicastConfig:
 
 @dataclass
 class EthConfig:
-    """Configuration for Ethernet IPCPs (LLC or DIX)."""
+    """
+    Configuration for Ethernet IPCPs (LLC or DIX).
+    """
+
     dev: str = ""
     ethertype: int = 0xA000
 
 
 @dataclass
 class Udp4Config:
-    """Configuration for UDP over IPv4 IPCPs."""
+    """
+    Configuration for UDP over IPv4 IPCPs.
+    """
+
     ip_addr: str = "0.0.0.0"
     dns_addr: str = "0.0.0.0"
     port: int = 3435
@@ -180,7 +208,10 @@ class Udp4Config:
 
 @dataclass
 class Udp6Config:
-    """Configuration for UDP over IPv6 IPCPs."""
+    """
+    Configuration for UDP over IPv6 IPCPs.
+    """
+
     ip_addr: str = "::"
     dns_addr: str = "::"
     port: int = 3435
@@ -188,18 +219,10 @@ class Udp6Config:
 
 @dataclass
 class IpcpConfig:
-    """Configuration for bootstrapping an IPCP.
-
-    Depending on the IPCP type, set the appropriate sub-configuration:
-
-    - UNICAST:   ``unicast`` (:class:`UnicastConfig`)
-    - ETH_LLC:   ``eth`` (:class:`EthConfig`)
-    - ETH_DIX:   ``eth`` (:class:`EthConfig`)
-    - UDP4:      ``udp4`` (:class:`Udp4Config`)
-    - UDP6:      ``udp6`` (:class:`Udp6Config`)
-    - LOCAL:     no extra config needed
-    - BROADCAST: no extra config needed
     """
+    Configuration for bootstrapping an IPCP.
+    """
+
     ipcp_type: IpcpType
     layer_name: str = ""
     dir_hash_algo: DirectoryHashAlgo = DirectoryHashAlgo.SHA3_256
@@ -211,7 +234,10 @@ class IpcpConfig:
 
 @dataclass
 class NameSecPaths:
-    """Security paths for a name (security config, key, certificate)."""
+    """
+    Security paths for a name.
+    """
+
     sec: str = ""
     key: str = ""
     crt: str = ""
@@ -219,7 +245,10 @@ class NameSecPaths:
 
 @dataclass
 class NameInfo:
-    """Information about a registered name."""
+    """
+    Information about a registered name.
+    """
+
     name: str
     pol_lb: LoadBalancePolicy = LoadBalancePolicy.ROUND_ROBIN
     server_sec: NameSecPaths = field(default_factory=NameSecPaths)
@@ -228,23 +257,30 @@ class NameInfo:
 
 @dataclass
 class IpcpInfo:
-    """Information about a running IPCP (from list_ipcps)."""
+    """
+    Information about a running IPCP.
+    """
+
     pid: int
     type: IpcpType
     name: str
     layer: str
 
 
-# --- Internal conversion functions ---
+def _ipcp_config_to_c(conf: IpcpConfig) -> Any:
+    """
+    Convert an :class:`IpcpConfig` to a C ``struct ipcp_config *``.
 
-def _ipcp_config_to_c(conf: IpcpConfig):
-    """Convert an :class:`IpcpConfig` to a C ``struct ipcp_config *``."""
+    The layer name is truncated to the 255 bytes the C struct holds.
+    """
+
     _conf = ffi.new("struct ipcp_config *")
 
-    # Layer info
     layer_name = conf.layer_name.encode()
+
     ffi.memmove(_conf.layer_info.name, layer_name,
                 min(len(layer_name), 255))
+
     _conf.layer_info.dir_hash_algo = conf.dir_hash_algo
 
     _conf.type = conf.ipcp_type
@@ -271,7 +307,9 @@ def _ipcp_config_to_c(conf: IpcpConfig):
     elif conf.ipcp_type in (IpcpType.ETH_LLC, IpcpType.ETH_DIX):
         ec = conf.eth or EthConfig()
         dev = ec.dev.encode()
+
         ffi.memmove(_conf.eth.dev, dev, min(len(dev), 255))
+
         _conf.eth.ethertype = ec.ethertype
 
     elif conf.ipcp_type == IpcpType.UDP4:
@@ -279,6 +317,7 @@ def _ipcp_config_to_c(conf: IpcpConfig):
         _conf.udp4.port = uc4.port
         if lib.ipcp_config_udp4_set_ip(_conf, uc4.ip_addr.encode()) != 0:
             raise ValueError(f"Invalid IPv4 address: {uc4.ip_addr}")
+
         if lib.ipcp_config_udp4_set_dns(_conf, uc4.dns_addr.encode()) != 0:
             raise ValueError(f"Invalid IPv4 DNS address: {uc4.dns_addr}")
 
@@ -287,45 +326,52 @@ def _ipcp_config_to_c(conf: IpcpConfig):
         _conf.udp6.port = uc6.port
         if lib.ipcp_config_udp6_set_ip(_conf, uc6.ip_addr.encode()) != 0:
             raise ValueError(f"Invalid IPv6 address: {uc6.ip_addr}")
+
         if lib.ipcp_config_udp6_set_dns(_conf, uc6.dns_addr.encode()) != 0:
             raise ValueError(f"Invalid IPv6 DNS address: {uc6.dns_addr}")
 
     return _conf
 
 
-def _name_info_to_c(info: NameInfo):
-    """Convert a :class:`NameInfo` to a C ``struct name_info *``."""
+def _name_info_to_c(info: NameInfo) -> Any:
+    """
+    Convert a :class:`NameInfo` to a C ``struct name_info *``.
+    """
+
     _info = ffi.new("struct name_info *")
 
     name = info.name.encode()
+
     ffi.memmove(_info.name, name, min(len(name), 255))
+
     _info.pol_lb = info.pol_lb
 
     for attr, sec in (('s', info.server_sec), ('c', info.client_sec)):
         sec_paths = getattr(_info, attr)
+
         for fld in ('sec', 'key', 'crt'):
             val = getattr(sec, fld).encode()
+
             ffi.memmove(getattr(sec_paths, fld), val,
                         min(len(val), 511))
 
     return _info
 
 
-# --- IRM API functions ---
-
 def create_ipcp(name: str,
                 ipcp_type: IpcpType) -> int:
-    """Create a new IPCP.
+    """
+    Create a new IPCP.
 
     :param name:      Name for the IPCP.
     :param ipcp_type: Type of IPCP to create.
     :return:          PID of the created IPCP.
+    :raises IpcpCreateError: If creation fails or the IPCP is not found.
     """
+
     raise_errno(lib.irm_create_ipcp(name.encode(), ipcp_type),
                 default=IpcpCreateError)
 
-    # The C function returns 0 on success, not the pid.
-    # Look up the actual pid by name.
     for info in list_ipcps():
         if info.name == name:
             return info.pid
@@ -334,24 +380,32 @@ def create_ipcp(name: str,
 
 
 def destroy_ipcp(pid: int) -> None:
-    """Destroy an IPCP.
+    """
+    Destroy an IPCP.
 
     :param pid: PID of the IPCP to destroy.
+    :raises IrmError: If the IPCP could not be destroyed.
     """
+
     raise_errno(lib.irm_destroy_ipcp(pid), default=IrmError)
 
 
 def list_ipcps() -> List[IpcpInfo]:
-    """List all running IPCPs.
+    """
+    List all running IPCPs.
 
     :return: List of :class:`IpcpInfo` objects.
+    :raises IrmError: If the IPCPs could not be listed.
     """
+
     _ipcps = ffi.new("struct ipcp_list_info **")
     n = raise_errno(lib.irm_list_ipcps(_ipcps), default=IrmError)
 
     result = []
+
     for i in range(n):
         info = _ipcps[0][i]
+
         result.append(IpcpInfo(
             pid=info.pid,
             type=IpcpType(info.type),
@@ -366,22 +420,29 @@ def list_ipcps() -> List[IpcpInfo]:
 
 
 def enroll_ipcp(pid: int, dst: str) -> None:
-    """Enroll an IPCP in a layer.
+    """
+    Enroll an IPCP in a layer.
 
     :param pid: PID of the IPCP to enroll.
-    :param dst: Name to use for enrollment.
+    :param dst: Name of a member of the layer to enroll with.
+    :raises IpcpEnrollError: If the IPCP could not enroll with *dst*.
     """
+
     raise_errno(lib.irm_enroll_ipcp(pid, dst.encode()),
                 default=IpcpEnrollError)
 
 
 def bootstrap_ipcp(pid: int, conf: IpcpConfig) -> None:
-    """Bootstrap an IPCP.
+    """
+    Bootstrap an IPCP.
 
     :param pid:  PID of the IPCP to bootstrap.
     :param conf: Configuration for the IPCP.
+    :raises IpcpBootstrapError: If the IPCP could not be bootstrapped.
     """
+
     _conf = _ipcp_config_to_c(conf)
+
     raise_errno(lib.irm_bootstrap_ipcp(pid, _conf),
                 default=IpcpBootstrapError)
 
@@ -390,17 +451,21 @@ def connect_ipcp(pid: int,
                  component: str,
                  dst: str,
                  qos: Optional[QoSSpec] = None) -> None:
-    """Connect an IPCP component to a destination.
+    """
+    Connect an IPCP component to a destination.
 
     :param pid:       PID of the IPCP.
-    :param component: Component to connect (:data:`DT_COMP` or
-                      :data:`MGMT_COMP`).
+    :param component: :data:`DT_COMP` or :data:`MGMT_COMP`.
     :param dst:       Destination name.
     :param qos:       QoS specification for the connection.
+    :raises IpcpConnectError: If *component* could not be
+                              connected to *dst*.
     """
+
     _qos = qos_to_qosspec(ffi, qos)
     if _qos == ffi.NULL:
         _qos = ffi.new("qosspec_t *")
+
     raise_errno(
         lib.irm_connect_ipcp(pid, dst.encode(), component.encode(),
                              _qos[0]),
@@ -411,12 +476,16 @@ def connect_ipcp(pid: int,
 def disconnect_ipcp(pid: int,
                     component: str,
                     dst: str) -> None:
-    """Disconnect an IPCP component from a destination.
+    """
+    Disconnect an IPCP component from a destination.
 
     :param pid:       PID of the IPCP.
-    :param component: Component to disconnect.
+    :param component: :data:`DT_COMP` or :data:`MGMT_COMP`.
     :param dst:       Destination name.
+    :raises IpcpConnectError: If *component* could not be
+                              disconnected from *dst*.
     """
+
     raise_errno(
         lib.irm_disconnect_ipcp(pid, dst.encode(), component.encode()),
         default=IpcpConnectError,
@@ -427,17 +496,24 @@ def bind_program(prog: str,
                  name: str,
                  opts: int = 0,
                  argv: Optional[List[str]] = None) -> None:
-    """Bind a program to a name.
+    """
+    Bind a program to a name.
 
     :param prog: Path to the program.
     :param name: Name to bind to.
     :param opts: Bind options (e.g. :data:`BIND_AUTO`).
-    :param argv: Arguments to pass when the program is started.
+    :param argv: Arguments passed when the IRM starts the program.
+    :raises BindError: If *prog* could not be bound to *name*.
     """
+
     if argv:
         argc = len(argv)
-        _argv = ffi.new("char *[]", [ffi.new("char[]", a.encode())
-                                     for a in argv])
+        _args = []
+
+        for a in argv:
+            _args.append(ffi.new("char[]", a.encode()))
+
+        _argv = ffi.new("char *[]", _args)
     else:
         argc = 0
         _argv = ffi.NULL
@@ -450,64 +526,85 @@ def bind_program(prog: str,
 
 
 def unbind_program(prog: str, name: str) -> None:
-    """Unbind a program from a name.
+    """
+    Unbind a program from a name.
 
     :param prog: Path to the program.
     :param name: Name to unbind from.
+    :raises BindError: If *prog* could not be unbound from *name*.
     """
+
     raise_errno(lib.irm_unbind_program(prog.encode(), name.encode()),
                 default=BindError)
 
 
 def bind_process(pid: int, name: str) -> None:
-    """Bind a running process to a name.
+    """
+    Bind a running process to a name.
 
     :param pid:  PID of the process.
     :param name: Name to bind to.
+    :raises BindError: If the process could not be bound to *name*.
     """
+
     raise_errno(lib.irm_bind_process(pid, name.encode()),
                 default=BindError)
 
 
 def unbind_process(pid: int, name: str) -> None:
-    """Unbind a process from a name.
+    """
+    Unbind a process from a name.
 
     :param pid:  PID of the process.
     :param name: Name to unbind from.
+    :raises BindError: If the process could not be unbound from *name*.
     """
+
     raise_errno(lib.irm_unbind_process(pid, name.encode()),
                 default=BindError)
 
 
 def create_name(info: NameInfo) -> None:
-    """Create a name in the IRM.
+    """
+    Create a name in the IRM.
 
     :param info: :class:`NameInfo` describing the name to create.
+    :raises NameExistsError: If the name already exists.
     """
+
     _info = _name_info_to_c(info)
+
     raise_errno(lib.irm_create_name(_info), default=NameExistsError)
 
 
 def destroy_name(name: str) -> None:
-    """Destroy a name in the IRM.
+    """
+    Destroy a name in the IRM.
 
     :param name: The name to destroy.
+    :raises NameNotFoundError: If the name is unknown.
     """
+
     raise_errno(lib.irm_destroy_name(name.encode()),
                 default=NameNotFoundError)
 
 
 def list_names() -> List[NameInfo]:
-    """List all registered names.
+    """
+    List all registered names.
 
     :return: List of :class:`NameInfo` objects.
+    :raises IrmError: If the names could not be listed.
     """
+
     _names = ffi.new("struct name_info **")
     n = raise_errno(lib.irm_list_names(_names), default=IrmError)
 
     result = []
+
     for i in range(n):
         info = _names[0][i]
+
         result.append(NameInfo(
             name=ffi.string(info.name).decode(),
             pol_lb=LoadBalancePolicy(info.pol_lb),
@@ -530,20 +627,27 @@ def list_names() -> List[NameInfo]:
 
 
 def reg_name(name: str, pid: int) -> None:
-    """Register an IPCP to a name.
+    """
+    Register an IPCP to a name.
 
     :param name: The name to register.
     :param pid:  PID of the IPCP to register.
+    :raises NameNotFoundError: If the name is unknown.
     """
+
     raise_errno(lib.irm_reg_name(name.encode(), pid),
                 default=NameNotFoundError)
 
 
 def unreg_name(name: str, pid: int) -> None:
-    """Unregister an IPCP from a name.
+    """
+    Unregister an IPCP from a name.
 
     :param name: The name to unregister.
     :param pid:  PID of the IPCP to unregister.
+    :raises NameNotFoundError: If the name or the registration
+                               is unknown.
     """
+
     raise_errno(lib.irm_unreg_name(name.encode(), pid),
                 default=NameNotFoundError)

@@ -314,7 +314,7 @@ from ouroboros.irm import (
 
 For most use cases, the higher-level [`ouroboros.cli`](#cli-helpers)
 wrappers are easier to work with — they mirror the `irm` CLI tool and
-take IPCP names rather than pids.
+are keyed by IPCP name.
 
 ### IPCP Management
 
@@ -534,7 +534,7 @@ See the module docstring for the full CLI-command ↔ Python mapping.
 
 ## Examples
 
-See the [`examples/`](examples/) folder for runnable client/server
+See the [`examples/`](examples/) directory for runnable client/server
 demos.
 
 ## Versioning
@@ -545,8 +545,8 @@ pyOuroboros uses `setuptools_scm` to derive its version from git tags.
 
 | Scope | Rule |
 |---|---|
-| ouroboros (C) ↔ pyouroboros / rumba | Shared `major.minor` — pyouroboros requires at least the same ouroboros `major.minor` |
-| pyouroboros ↔ rumba ↔ ouroboros-integration | Strict lockstep `major.minor.patch` — always released together |
+| ouroboros (C) ↔ pyouroboros / rumba | Shared `major.minor`, C side at least equal |
+| pyouroboros ↔ rumba ↔ ouroboros-integration | Lockstep `major.minor.patch`, released together |
 
 ## License
 

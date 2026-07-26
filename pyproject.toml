@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2016 - 2026 Dimitri Staessens
+# SPDX-License-Identifier: LGPL-2.1-only
+
 [build-system]
 requires = ["setuptools>=64", "setuptools-scm>=8", "cffi>=1.0.0"]
 build-backend = "setuptools.build_meta"
@@ -8,9 +11,7 @@ dynamic = ["version"]
 description = "Python API for Ouroboros"
 license = "LGPL-2.1-only"
 requires-python = ">=3.8"
-authors = [
-    { name = "Dimitri Staessens", email = "dimitri@ouroboros.rocks" }
-]
+authors = [{ name = "Dimitri Staessens", email = "dimitri@ouroboros.rocks" }]
 keywords = ["ouroboros", "IPC"]
 dependencies = ["cffi>=1.0.0"]
 
@@ -23,8 +24,11 @@ packages = ["ouroboros"]
 [tool.setuptools_scm]
 
 [tool.pylint.main]
-extension-pkg-allow-list = ["_ouroboros_dev_cffi", "_ouroboros_irm_cffi"]
-ignored-modules = ["setuptools_scm", "_ouroboros_dev_cffi", "_ouroboros_irm_cffi"]
+ignored-modules = [
+  "setuptools_scm",
+  "_ouroboros_dev_cffi",
+  "_ouroboros_irm_cffi",
+]
 
 [tool.pylint.format]
 max-line-length = 100
@@ -34,4 +38,3 @@ max-args = 10
 max-positional-arguments = 10
 max-attributes = 10
 max-public-methods = 30
-

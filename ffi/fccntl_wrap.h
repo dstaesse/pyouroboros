@@ -71,7 +71,7 @@ int flow_get_flags(int fd)
 {
         uint32_t flags;
 
-        if (fccntl(fd, FLOWGFLAGS, &flags))
+        if (fccntl(fd, FLOWGFLAGS, &flags) < 0)
                 return -EPERM;
 
         return (int) flags;
@@ -86,7 +86,7 @@ int flow_get_frct_flags(int fd)
 {
         uint16_t flags;
 
-        if (fccntl(fd, FRCTGFLAGS, &flags))
+        if (fccntl(fd, FRCTGFLAGS, &flags) < 0)
                 return -EPERM;
 
         return (int) flags;

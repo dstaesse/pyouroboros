@@ -1,28 +1,17 @@
 #
-# Ouroboros - Copyright (C) 2016 - 2026
-#
-# Python API for Ouroboros
-#
-#    Dimitri Staessens <dimitri@ouroboros.rocks>
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public License
-# version 2.1 as published by the Free Software Foundation.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public
-# License along with this library; if not, write to the Free Software
-# Foundation, Inc., http://www.fsf.org/about/contact/.
+# SPDX-FileCopyrightText: 2016 - 2026 Dimitri Staessens
+# SPDX-License-Identifier: LGPL-2.1-only
 #
 
-"""CFFI build script for the ouroboros-irm library."""
+"""
+CFFI build script for the ouroboros-irm library.
+"""
 
-# qosspec_t / timespec cdef is duplicated in the dev builder per CFFI module.
+# qosspec_t / timespec cdef is duplicated in the dev builder, one copy
+# per CFFI module.
 # pylint: disable=duplicate-code
+
+from __future__ import annotations
 
 from cffi import FFI
 

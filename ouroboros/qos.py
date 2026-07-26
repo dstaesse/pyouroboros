@@ -1,25 +1,11 @@
 #
-# Ouroboros - Copyright (C) 2016 - 2026
-#
-# Python API for Ouroboros - QoS
-#
-#    Dimitri Staessens <dimitri@ouroboros.rocks>
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public License
-# version 2.1 as published by the Free Software Foundation.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public
-# License along with this library; if not, write to the Free Software
-# Foundation, Inc., http://www.fsf.org/about/contact/.
+# SPDX-FileCopyrightText: 2016 - 2026 Dimitri Staessens
+# SPDX-License-Identifier: LGPL-2.1-only
 #
 
-"""QoS specification for Ouroboros flows."""
+"""
+QoS specification for Ouroboros flows.
+"""
 
 from __future__ import annotations
 
@@ -32,7 +18,10 @@ UINT64_MAX = 0xFFFFFFFFFFFFFFFF
 
 
 class QoSService(IntEnum):
-    """Mirrors ``enum qos_service`` in ``ouroboros/qos.h``."""
+    """
+    Mirrors ``enum qos_service`` in ``ouroboros/qos.h``.
+    """
+
     RAW     = 0  # No FRCT; best-effort raw messages
     MESSAGE = 1  # FRCT, reliable ordered messages
     STREAM  = 2  # FRCT, reliable ordered byte stream
@@ -40,11 +29,8 @@ class QoSService(IntEnum):
 
 @dataclass(frozen=True)
 class QoSSpec:
-    """QoS specification for a flow.
-
-    Frozen so the module-level ``QOS_*`` predefined cubes are safe to
-    share. Construct a new spec with ``dataclasses.replace(qos, ...)``
-    or ``QoSSpec(...)`` to override fields.
+    """
+    QoS specification for a flow.
 
     :ivar service:      :class:`QoSService` (gates FRCT when > 0).
     :ivar delay:        Maximum one-way delay in ms.
@@ -55,6 +41,7 @@ class QoSSpec:
     :ivar max_gap:      Maximum interruption in ms.
     :ivar timeout:      Peer timeout in ms (default 120000 ms).
     """
+
     service: QoSService = QoSService.RAW
     delay: int = UINT32_MAX
     bandwidth: int = 0

@@ -1,9 +1,15 @@
-"""Build script for the PyOuroboros CFFI extensions.
+#
+# SPDX-FileCopyrightText: 2016 - 2026 Dimitri Staessens
+# SPDX-License-Identifier: LGPL-2.1-only
+#
+
+"""
+Build script for the PyOuroboros CFFI extensions.
 
 Resolves the ouroboros library version via ``pkg-config`` and the
 pyouroboros source version via ``setuptools_scm``, verifies that the
-``major.minor`` halves match, and delegates the actual build to the
-CFFI builders under ``ffi/``.
+``major.minor`` halves match, and delegates the actual build to the CFFI
+builders under ``ffi/``.
 """
 
 from __future__ import annotations
@@ -28,19 +34,21 @@ def _get_ouroboros_version() -> str:
 
 
 def _check_build_version_compat() -> None:
+    """
+    Exit when the ouroboros and pyouroboros ``major.minor`` disagree.
+
+    Returns without checking when the tree carries no SCM information.
+    """
+
     try:
         pyo7s_ver = get_version(root='.', relative_to=__file__)
     except (LookupError, OSError):
-        return  # no SCM info, skip check
+        return
 
     o7s_ver = _get_ouroboros_version()
 
-    # setuptools_scm: '0.23.1.dev3+g<hash>' or '0.23.0'
-    # pkg-config:     '0.23.0'
-    # Compare major.minor only.
     o7s_parts   = o7s_ver.split('.')
     pyo7s_parts = pyo7s_ver.split('.')
-
     if o7s_parts[0] != pyo7s_parts[0] or o7s_parts[1] != pyo7s_parts[1]:
         sys.exit(
             f"ERROR: Version mismatch: ouroboros {o7s_ver} "

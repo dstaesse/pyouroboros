@@ -1,35 +1,15 @@
 #
-# Ouroboros - Copyright (C) 2016 - 2026
-#
-# Python API for Ouroboros
-#
-#    Dimitri Staessens <dimitri@ouroboros.rocks>
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public License
-# version 2.1 as published by the Free Software Foundation.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public
-# License along with this library; if not, write to the Free Software
-# Foundation, Inc., http://www.fsf.org/about/contact/.
+# SPDX-FileCopyrightText: 2016 - 2026 Dimitri Staessens
+# SPDX-License-Identifier: LGPL-2.1-only
 #
 
-"""Public Python API for Ouroboros.
+"""
+Public Python API for Ouroboros.
 
-The package surface only re-exports pure-Python helpers (errors and
-QoS).  Applications import the load-bearing parts of the API from
-their submodule explicitly: flows from :mod:`ouroboros.dev`, the
-event loop from :mod:`ouroboros.event`, and the control plane from
-:mod:`ouroboros.irm` (or :mod:`ouroboros.cli`).  Submodule paths
-make the caller's intent explicit and keep the package importable
-in environments that have no business loading the libouroboros CFFI
-extensions (see ``CLAUDE.md`` for the underlying init-on-load
-behaviour that makes this contract load-bearing in practice).
+The package surface re-exports the pure-Python helpers only: errors and
+QoS. The rest of the API is imported from its submodule: flows from
+:mod:`ouroboros.dev`, the event loop from :mod:`ouroboros.event`, the
+control plane from :mod:`ouroboros.irm` (or :mod:`ouroboros.cli`).
 """
 
 from __future__ import annotations
