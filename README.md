@@ -4,7 +4,7 @@
 ## Dependencies
 
 pyOuroboros requires <a href="https://ouroboros.rocks">Ouroboros</a>
-to be installed (matching `major.minor` version — see [Versioning](#versioning)).
+to be installed (matching `major.minor` version, see [Versioning](#versioning)).
 
 ## Installation
 
@@ -23,7 +23,7 @@ pip install -e .
 ## Basic Usage
 
 Applications import each part of the API from its submodule
-explicitly — flows, events and the control plane are three distinct
+explicitly: flows, events and the control plane are three distinct
 concerns, and the import line says which one is in use:
 
 ```Python
@@ -37,7 +37,7 @@ from ouroboros.cli   import autoboot, destroy_ipcp
 The pure-Python `errors` and `qos` modules are also re-exported at
 the top level for convenience (`from ouroboros import QoSSpec,
 OuroborosError`), but `dev`, `event`, `irm` and `cli` are only
-available through their submodule path — importing them eagerly
+available through their submodule path; importing them eagerly
 from the top-level package would load the libouroboros CFFI
 extensions on every `import ouroboros`, which is the wrong default
 for a binding layer.
@@ -69,7 +69,7 @@ f.dealloc()
 ```
 
 `dealloc()` is idempotent. To avoid calling it explicitly, use a
-`with` statement — and any `Flow` that is garbage-collected without
+`with` statement, and any `Flow` that is garbage-collected without
 being deallocated will be cleaned up too:
 
 ```Python
@@ -305,7 +305,9 @@ managing IPCPs, names, and bindings:
 ```Python
 from ouroboros.irm import (
     IpcpType, IpcpConfig, NameInfo, BIND_AUTO, DT_COMP, MGMT_COMP,
+    PoaAddr, PoaSpec, PoaType, EthPoa, Udp4Poa, Udp6Poa,
     create_ipcp, bootstrap_ipcp, enroll_ipcp, destroy_ipcp, list_ipcps,
+    attach_ipcp, detach_ipcp, list_poas,
     connect_ipcp, disconnect_ipcp,
     create_name, destroy_name, list_names, reg_name, unreg_name,
     bind_program, unbind_program, bind_process, unbind_process,
@@ -313,7 +315,7 @@ from ouroboros.irm import (
 ```
 
 For most use cases, the higher-level [`ouroboros.cli`](#cli-helpers)
-wrappers are easier to work with — they mirror the `irm` CLI tool and
+wrappers are easier to work with: they mirror the `irm` CLI tool and
 are keyed by IPCP name.
 
 ### IPCP Management
@@ -339,8 +341,7 @@ enroll_ipcp(pid, "enrollment_dst")
 destroy_ipcp(pid)
 ```
 
-IPCP types: `LOCAL`, `UNICAST`, `BROADCAST`, `ETH_LLC`, `ETH_DIX`,
-`UDP4`, `UDP6`.
+IPCP types: `LOCAL`, `UNICAST`, `BROADCAST`.
 
 ### IPCP Configuration
 
@@ -418,48 +419,31 @@ conf = IpcpConfig(
 )
 ```
 
-#### Ethernet IPCPs (LLC and DIX)
+#### Points of Attachment
+
+A unicast or broadcast IPCP can attach to a Ethernet or UDP endpoint (Point of Attachment):
 
 ```Python
-conf = IpcpConfig(
-    ipcp_type=IpcpType.ETH_LLC,  # or IpcpType.ETH_DIX
-    layer_name="eth_layer",
-    eth=EthConfig(
-        dev="eth0",         # Network device name
-        ethertype=0xA000    # Ethertype (mainly for DIX)
-    )
-)
+# Ethernet, named by device
+attach_ipcp(pid, PoaSpec(eth=EthPoa(dev="eth0", ethertype=0xA000)))
+
+# UDP over IPv4
+attach_ipcp(pid, PoaSpec(udp4=Udp4Poa(ip_addr="192.168.1.1", port=3435)))
+
+# UDP over IPv6
+attach_ipcp(pid, PoaSpec(udp6=Udp6Poa(ip_addr="fd00::1", port=3435)))
+
+# List what an IPCP is attached to
+for poa in list_poas(pid):
+    print(poa)
+
+# Release one again
+detach_ipcp(pid, PoaSpec(udp4=Udp4Poa(ip_addr="192.168.1.1", port=3435)))
 ```
 
-#### UDP IPCPs
-
-For UDP over IPv4:
-
-```Python
-conf = IpcpConfig(
-    ipcp_type=IpcpType.UDP4,
-    layer_name="udp4_layer",
-    udp4=Udp4Config(
-        ip_addr="192.168.1.1",    # Local IP address
-        dns_addr="192.168.1.254", # DNS server address
-        port=3435                 # UDP port (default: 3435)
-    )
-)
-```
-
-For UDP over IPv6:
-
-```Python
-conf = IpcpConfig(
-    ipcp_type=IpcpType.UDP6,
-    layer_name="udp6_layer",
-    udp6=Udp6Config(
-        ip_addr="fd00::1",       # Local IPv6 address
-        dns_addr="fd00::fe",     # DNS server address
-        port=3435                # UDP port (default: 3435)
-    )
-)
-```
+Exactly one of `udp4`, `udp6` or `eth` must be set on a `PoaSpec`. An
+Ethernet PoA is named by its device `dev`. The peer's hardware address
+(`mac`) is reported by `list_poas`; it is not settable when attaching.
 
 ### Connecting IPCP Components
 
@@ -470,6 +454,35 @@ disconnect_ipcp(pid, DT_COMP, "destination")
 ```
 
 `connect_ipcp` optionally takes a `qos=QoSSpec(...)` argument.
+
+#### Connecting over a specific PoA
+
+Pass `addr=PoaAddr(...)` to name the peer's PoA directly:
+
+```Python
+# Peer on a UDP/IPv4 PoA
+connect_ipcp(pid, DT_COMP, "destination",
+             addr=PoaAddr(poa_type=PoaType.UDP4,
+                          addr="192.168.1.2", port=3435))
+
+# The address may also be a host name for the IRMd to resolve
+connect_ipcp(pid, DT_COMP, "destination",
+             addr=PoaAddr(poa_type=PoaType.UDP6,
+                          addr="peer.example.com", port=3435))
+
+# Peer on an Ethernet PoA, reached over our device eth0
+connect_ipcp(pid, DT_COMP, "destination",
+             addr=PoaAddr(poa_type=PoaType.ETH,
+                          dev="eth0", ethertype=0xA000))
+```
+
+`enroll_ipcp` takes the same `addr=PoaAddr(...)` argument. A call that
+omits `addr` resolves the destination name through the IRM.
+
+The IPCP must already be attached to a PoA that can reach the peer; see
+[Points of Attachment](#points-of-attachment). For UDP, `addr` is an IP
+literal or a host name the IRMd resolves. For Ethernet the peer is
+resolved by name query, and our own PoA may be pinned by `dev`.
 
 ### Name Management
 

@@ -22,16 +22,20 @@ from ouroboros.irm import (
     DhtConfig,
     DirConfig,
     DtConfig,
-    EthConfig,
+    EthPoa,
     IpcpConfig,
     IpcpInfo,
     IpcpType,
     LinkStateConfig,
     NameInfo,
+    PoaAddr,
+    PoaSpec,
+    PoaType,
     RoutingConfig,
-    Udp4Config,
-    Udp6Config,
+    Udp4Poa,
+    Udp6Poa,
     UnicastConfig,
+    attach_ipcp as _irm_attach_ipcp,
     bind_program as _irm_bind_program,
     bind_process as _irm_bind_process,
     bootstrap_ipcp as _irm_bootstrap_ipcp,
@@ -40,10 +44,12 @@ from ouroboros.irm import (
     create_name as _irm_create_name,
     destroy_ipcp as _irm_destroy_ipcp,
     destroy_name,
+    detach_ipcp as _irm_detach_ipcp,
     disconnect_ipcp as _irm_disconnect_ipcp,
     enroll_ipcp as _irm_enroll_ipcp,
     list_ipcps as _irm_list_ipcps,
     list_names as _irm_list_names,
+    list_poas as _irm_list_poas,
     reg_name as _irm_reg_name,
     unbind_process as _irm_unbind_process,
     unbind_program as _irm_unbind_program,
@@ -53,17 +59,45 @@ from ouroboros.qos import QoSSpec
 
 __all__ = [
     # Functions
-    "create_ipcp", "destroy_ipcp", "bootstrap_ipcp", "enroll_ipcp",
-    "connect_ipcp", "disconnect_ipcp", "list_ipcps",
-    "bind_program", "bind_process", "bind_ipcp",
-    "unbind_program", "unbind_process", "unbind_ipcp",
-    "create_name", "destroy_name", "reg_name", "unreg_name", "list_names",
+    "create_ipcp",
+    "destroy_ipcp",
+    "bootstrap_ipcp",
+    "attach_ipcp",
+    "detach_ipcp",
+    "list_poas",
+    "enroll_ipcp",
+    "connect_ipcp",
+    "disconnect_ipcp",
+    "list_ipcps",
+    "bind_program",
+    "bind_process",
+    "bind_ipcp",
+    "unbind_program",
+    "unbind_process",
+    "unbind_ipcp",
+    "create_name",
+    "destroy_name",
+    "reg_name",
+    "unreg_name",
+    "list_names",
     "autoboot",
     # Re-exported configuration types
-    "DhtConfig", "DirConfig", "DtConfig", "EthConfig",
-    "IpcpConfig", "IpcpInfo", "IpcpType",
-    "LinkStateConfig", "NameInfo", "RoutingConfig",
-    "Udp4Config", "Udp6Config", "UnicastConfig",
+    "DhtConfig",
+    "DirConfig",
+    "DtConfig",
+    "EthPoa",
+    "IpcpConfig",
+    "IpcpInfo",
+    "IpcpType",
+    "LinkStateConfig",
+    "NameInfo",
+    "PoaAddr",
+    "PoaSpec",
+    "PoaType",
+    "RoutingConfig",
+    "Udp4Poa",
+    "Udp6Poa",
+    "UnicastConfig",
 ]
 
 
@@ -79,10 +113,12 @@ def _pid_of(ipcp_name: str) -> int:
     raise ValueError(f"No IPCP named {ipcp_name!r}")
 
 
-def _collect_pids(ipcp: Optional[str],
-                  ipcps: Optional[List[str]],
-                  layer: Optional[str],
-                  layers: Optional[List[str]]) -> Set[int]:
+def _collect_pids(
+    ipcp: Optional[str],
+    ipcps: Optional[List[str]],
+    layer: Optional[str],
+    layers: Optional[List[str]],
+) -> Set[int]:
     """
     Collect the set of pids matching the given name/layer filters.
     """
@@ -135,9 +171,9 @@ def destroy_ipcp(name: str) -> None:
     _irm_destroy_ipcp(_pid_of(name))
 
 
-def list_ipcps(name: Optional[str] = None,
-               layer: Optional[str] = None,
-               ipcp_type: Optional[IpcpType] = None) -> List[IpcpInfo]:
+def list_ipcps(
+    name: Optional[str] = None, layer: Optional[str] = None, ipcp_type: Optional[IpcpType] = None
+) -> List[IpcpInfo]:
     """
     List running IPCPs, optionally filtered.
 
@@ -163,11 +199,13 @@ def list_ipcps(name: Optional[str] = None,
     return result
 
 
-def reg_name(name: str,
-             ipcp: Optional[str] = None,
-             ipcps: Optional[List[str]] = None,
-             layer: Optional[str] = None,
-             layers: Optional[List[str]] = None) -> None:
+def reg_name(
+    name: str,
+    ipcp: Optional[str] = None,
+    ipcps: Optional[List[str]] = None,
+    layer: Optional[str] = None,
+    layers: Optional[List[str]] = None,
+) -> None:
     """
     Register a name with IPCP(s), creating it first if needed.
 
@@ -188,10 +226,7 @@ def reg_name(name: str,
         _irm_reg_name(name, pid)
 
 
-def bind_program(prog: str,
-                 name: str,
-                 opts: int = 0,
-                 argv: Optional[List[str]] = None) -> None:
+def bind_program(prog: str, name: str, opts: int = 0, argv: Optional[List[str]] = None) -> None:
     """
     Bind a program to a name.
 
@@ -203,7 +238,7 @@ def bind_program(prog: str,
     :raises BindError: If the program is not found on ``PATH``.
     """
 
-    if '/' not in prog:
+    if "/" not in prog:
         resolved = shutil.which(prog)
         if resolved is None:
             raise BindError(f"Program {prog!r} not found on PATH")
@@ -270,9 +305,7 @@ def unbind_ipcp(ipcp: str, name: str) -> None:
     _irm_unbind_process(_pid_of(ipcp), name)
 
 
-def create_name(name: str,
-                pol_lb: Optional[int] = None,
-                info: Optional[NameInfo] = None) -> None:
+def create_name(name: str, pol_lb: Optional[int] = None, info: Optional[NameInfo] = None) -> None:
     """
     Create a registered name.
 
@@ -309,11 +342,13 @@ def list_names(name: Optional[str] = None) -> List[NameInfo]:
     return result
 
 
-def unreg_name(name: str,
-               ipcp: Optional[str] = None,
-               ipcps: Optional[List[str]] = None,
-               layer: Optional[str] = None,
-               layers: Optional[List[str]] = None) -> None:
+def unreg_name(
+    name: str,
+    ipcp: Optional[str] = None,
+    ipcps: Optional[List[str]] = None,
+    layer: Optional[str] = None,
+    layers: Optional[List[str]] = None,
+) -> None:
     """
     Unregister a name from IPCP(s).
 
@@ -330,9 +365,7 @@ def unreg_name(name: str,
         _irm_unreg_name(name, pid)
 
 
-def bootstrap_ipcp(name: str,
-                   conf: IpcpConfig,
-                   autobind: bool = False) -> None:
+def bootstrap_ipcp(name: str, conf: IpcpConfig, autobind: bool = False) -> None:
     """
     Bootstrap an IPCP, optionally binding it to its name and layer.
 
@@ -362,20 +395,58 @@ def bootstrap_ipcp(name: str,
         raise
 
 
-def enroll_ipcp(name: str, dst: str,
-                autobind: bool = False) -> None:
+def attach_ipcp(name: str, poa: PoaSpec) -> None:
+    """
+    Attach an IPCP to a medium. Repeat for more than one PoA.
+
+    :param name: Name of the IPCP.
+    :param poa:  The PoA to attach to.
+    """
+
+    _irm_attach_ipcp(_pid_of(name), poa)
+
+
+def detach_ipcp(name: str, poa: PoaSpec) -> None:
+    """
+    Release a PoA an IPCP is attached to.
+
+    :param name: Name of the IPCP.
+    :param poa:  The PoA to release.
+    """
+
+    _irm_detach_ipcp(_pid_of(name), poa)
+
+
+def list_poas(name: str) -> List[PoaSpec]:
+    """
+    List the PoAs an IPCP is attached to.
+
+    :param name: Name of the IPCP.
+    :return:     List of :class:`PoaSpec` objects.
+    """
+
+    return _irm_list_poas(_pid_of(name))
+
+
+def enroll_ipcp(
+    name: str, dst: str, autobind: bool = False, addr: Optional[PoaAddr] = None
+) -> None:
     """
     Enroll an IPCP, optionally binding it to its name and layer.
+
+    The IPCP must already be attached to a PoA that can reach
+    *addr*; see :func:`attach_ipcp`.
 
     :param name:     Name of the IPCP.
     :param dst:      Destination name or layer to enroll with.
     :param autobind: Bind the IPCP process to its name and to the layer
                      learned during enrollment.
+    :param addr:     Address of the PoA to enroll over.
     """
 
     pid = _pid_of(name)
 
-    _irm_enroll_ipcp(pid, dst)
+    _irm_enroll_ipcp(pid, dst, addr=addr)
 
     if autobind:
         for info in _irm_list_ipcps():
@@ -385,8 +456,13 @@ def enroll_ipcp(name: str, dst: str,
                 break
 
 
-def connect_ipcp(name: str, dst: str, comp: str = "*",
-                 qos: Optional[QoSSpec] = None) -> None:
+def connect_ipcp(
+    name: str,
+    dst: str,
+    comp: str = "*",
+    qos: Optional[QoSSpec] = None,
+    addr: Optional[PoaAddr] = None,
+) -> None:
     """
     Connect IPCP components to a destination.
 
@@ -394,15 +470,16 @@ def connect_ipcp(name: str, dst: str, comp: str = "*",
     :param dst:  Destination IPCP name.
     :param comp: ``"dt"``, ``"mgmt"``, or ``"*"`` for both.
     :param qos:  QoS specification for the dt component.
+    :param addr: Address of the PoA to connect over.
     """
 
     pid = _pid_of(name)
 
     if comp in ("*", "mgmt"):
-        _irm_connect_ipcp(pid, MGMT_COMP, dst)
+        _irm_connect_ipcp(pid, MGMT_COMP, dst, addr=addr)
 
     if comp in ("*", "dt"):
-        _irm_connect_ipcp(pid, DT_COMP, dst, qos=qos)
+        _irm_connect_ipcp(pid, DT_COMP, dst, qos=qos, addr=addr)
 
 
 def disconnect_ipcp(name: str, dst: str, comp: str = "*") -> None:
@@ -423,10 +500,7 @@ def disconnect_ipcp(name: str, dst: str, comp: str = "*") -> None:
         _irm_disconnect_ipcp(pid, DT_COMP, dst)
 
 
-def autoboot(name: str,
-             ipcp_type: IpcpType,
-             layer: str,
-             conf: Optional[IpcpConfig] = None) -> None:
+def autoboot(name: str, ipcp_type: IpcpType, layer: str, conf: Optional[IpcpConfig] = None) -> None:
     """
     Create, autobind and bootstrap an IPCP in one step.
 

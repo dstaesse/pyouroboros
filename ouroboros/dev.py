@@ -248,7 +248,7 @@ class Flow:
         Read up to *count* bytes from the flow.
 
         :param count: Maximum number of bytes to read (default 2048).
-        :return:      Bytes read; empty when a previous read fully
+        :return:      Bytes read; empty when a previous read() fully
                       consumed the SDU.
         :raises FlowError: On a negative ouroboros return code.
         :raises FlowNotAllocatedError: If the flow is not allocated.

@@ -33,10 +33,6 @@ struct timespec {
 #define OUROBOROS_VERSION_MINOR ...
 #define OUROBOROS_VERSION_PATCH ...
 
-/* Network types */
-struct in_addr { ...; };
-struct in6_addr { ...; };
-
 /* OUROBOROS QOS.H */
 typedef struct qos_spec {
         uint8_t  service;
@@ -54,11 +50,14 @@ enum ipcp_type {
         IPCP_LOCAL     = ...,
         IPCP_UNICAST   = ...,
         IPCP_BROADCAST = ...,
-        IPCP_ETH_LLC   = ...,
-        IPCP_ETH_DIX   = ...,
-        IPCP_UDP4      = ...,
-        IPCP_UDP6      = ...,
         IPCP_INVALID   = ...
+};
+
+enum poa_type {
+        POA_UDP4    = ...,
+        POA_UDP6    = ...,
+        POA_ETH     = ...,
+        POA_INVALID = ...
 };
 
 /* Unicast IPCP policies */
@@ -146,21 +145,25 @@ struct uni_config {
         enum pol_cong_avoid cong_avoid;
 };
 
-struct eth_config {
+#define POA_UDP_PORT ...
+#define POA_ETHERTYPE ...
+
+/*
+ * Opaque: both embed struct in_addr / struct in6_addr, whose alignment
+ * cannot be mirrored here. The helpers in irm_wrap.h fill them in.
+ */
+struct poa_spec { ...; };
+
+struct poa_addr { ...; };
+
+/* A listed PoA, rendered as text by irm_wrap.h. */
+struct poa_spec_py {
+        int      type;
+        char     addr[46]; /* INET6_ADDRSTRLEN */
+        uint16_t port;
         char     dev[256]; /* DEV_NAME_SIZE + 1 */
+        char     mac[18];  /* POA_MAC_STRLEN + 1 */
         uint16_t ethertype;
-};
-
-struct udp4_config {
-        struct in_addr ip_addr;
-        struct in_addr dns_addr;
-        uint16_t       port;
-};
-
-struct udp6_config {
-        struct in6_addr ip_addr;
-        struct in6_addr dns_addr;
-        uint16_t        port;
 };
 
 struct layer_info {
@@ -172,12 +175,7 @@ struct ipcp_config {
         struct layer_info layer_info;
         enum ipcp_type    type;
 
-        union {
-                struct uni_config  unicast;
-                struct udp4_config udp4;
-                struct udp6_config udp6;
-                struct eth_config  eth;
-        };
+        struct uni_config unicast;
 };
 
 /* OUROBOROS NAME.H */
@@ -219,16 +217,27 @@ int     irm_destroy_ipcp(pid_t pid);
 
 ssize_t irm_list_ipcps(struct ipcp_list_info ** ipcps);
 
-int     irm_enroll_ipcp(pid_t        pid,
-                        const char * dst);
+int     irm_enroll_ipcp(pid_t                   pid,
+                        const char *            dst,
+                        const struct poa_addr * addr);
+
+int     irm_attach_ipcp(pid_t                   pid,
+                        const struct poa_spec * poa);
+
+int     irm_detach_ipcp(pid_t                   pid,
+                        const struct poa_spec * poa);
+
+ssize_t irm_list_poas(pid_t              pid,
+                      struct poa_spec ** poas);
 
 int     irm_bootstrap_ipcp(pid_t                      pid,
                            const struct ipcp_config * conf);
 
-int     irm_connect_ipcp(pid_t        pid,
-                         const char * dst,
-                         const char * component,
-                         qosspec_t    qs);
+int     irm_connect_ipcp(pid_t                   pid,
+                         const char *            dst,
+                         const char *            component,
+                         qosspec_t               qs,
+                         const struct poa_addr * addr);
 
 int     irm_disconnect_ipcp(pid_t        pid,
                             const char * dst,
@@ -262,30 +271,40 @@ int     irm_unreg_name(const char * name,
                        pid_t        pid);
 
 /* IRM WRAPPER HELPERS */
-int ipcp_config_udp4_set_ip(struct ipcp_config * conf,
-                            const char *         ip_str);
+int poa_spec_set_udp(struct poa_spec * poa,
+                     int               v6,
+                     const char *      ip_str,
+                     uint16_t          port);
 
-int ipcp_config_udp4_set_dns(struct ipcp_config * conf,
-                             const char *         dns_str);
+int poa_spec_set_eth(struct poa_spec * poa,
+                     const char *      dev,
+                     uint16_t          ethertype);
 
-int ipcp_config_udp6_set_ip(struct ipcp_config * conf,
-                            const char *         ip_str);
+int poa_spec_get(const struct poa_spec * poas,
+                 size_t                  idx,
+                 struct poa_spec_py *    out);
 
-int ipcp_config_udp6_set_dns(struct ipcp_config * conf,
-                             const char *         dns_str);
+int poa_addr_set(struct poa_addr * addr,
+                 int               type,
+                 const char *      dst,
+                 uint16_t          port,
+                 uint16_t          ethertype,
+                 const char *      dev);
 
 /* libc */
 void free(void *ptr);
 """)
 
-ffibuilder.set_source("_ouroboros_irm_cffi",
-                      """
+ffibuilder.set_source(
+    "_ouroboros_irm_cffi",
+    """
 #include "ouroboros/version.h"
 #include "ouroboros/qos.h"
 #include "irm_wrap.h"
                       """,
-                      libraries=['ouroboros-irm'],
-                      extra_compile_args=["-I./ffi/"])
+    libraries=["ouroboros-irm"],
+    extra_compile_args=["-I./ffi/"],
+)
 
 if __name__ == "__main__":
     ffibuilder.compile(verbose=True)

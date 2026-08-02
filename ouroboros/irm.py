@@ -18,6 +18,7 @@ from _ouroboros_irm_cffi import ffi, lib
 from ouroboros._qosspec import qos_to_qosspec
 from ouroboros.errors import (
     BindError,
+    IpcpAttachError,
     IpcpBootstrapError,
     IpcpConnectError,
     IpcpCreateError,
@@ -30,12 +31,11 @@ from ouroboros.errors import (
 )
 from ouroboros.qos import QoSSpec
 
-check_ouroboros_version(lib.OUROBOROS_VERSION_MAJOR,
-                        lib.OUROBOROS_VERSION_MINOR)
+check_ouroboros_version(lib.OUROBOROS_VERSION_MAJOR, lib.OUROBOROS_VERSION_MINOR)
 
 BIND_AUTO = lib.BIND_AUTO
 
-DT_COMP   = "Data Transfer"
+DT_COMP = "Data Transfer"
 MGMT_COMP = "Management"
 
 
@@ -44,13 +44,19 @@ class IpcpType(IntEnum):
     IPCP types available in Ouroboros.
     """
 
-    LOCAL     = lib.IPCP_LOCAL
-    UNICAST   = lib.IPCP_UNICAST
+    LOCAL = lib.IPCP_LOCAL
+    UNICAST = lib.IPCP_UNICAST
     BROADCAST = lib.IPCP_BROADCAST
-    ETH_LLC   = lib.IPCP_ETH_LLC
-    ETH_DIX   = lib.IPCP_ETH_DIX
-    UDP4      = lib.IPCP_UDP4
-    UDP6      = lib.IPCP_UDP6
+
+
+class PoaType(IntEnum):
+    """
+    The medium a PoA sits on.
+    """
+
+    UDP4 = lib.POA_UDP4
+    UDP6 = lib.POA_UDP6
+    ETH = lib.POA_ETH
 
 
 class AddressAuthPolicy(IntEnum):
@@ -67,8 +73,8 @@ class LinkStatePolicy(IntEnum):
     """
 
     SIMPLE = lib.LS_SIMPLE
-    LFA    = lib.LS_LFA
-    ECMP   = lib.LS_ECMP
+    LFA = lib.LS_LFA
+    ECMP = lib.LS_ECMP
 
 
 class RoutingPolicy(IntEnum):
@@ -84,7 +90,7 @@ class CongestionAvoidPolicy(IntEnum):
     Congestion avoidance policies.
     """
 
-    NONE   = lib.CA_NONE
+    NONE = lib.CA_NONE
     MB_ECN = lib.CA_MB_ECN
 
 
@@ -113,7 +119,7 @@ class LoadBalancePolicy(IntEnum):
     """
 
     ROUND_ROBIN = lib.LB_RR
-    SPILL       = lib.LB_SPILL
+    SPILL = lib.LB_SPILL
 
 
 @dataclass
@@ -186,35 +192,68 @@ class UnicastConfig:
 
 
 @dataclass
-class EthConfig:
+class EthPoa:
     """
-    Configuration for Ethernet IPCPs (LLC or DIX).
+    Configuration for an Ethernet PoA.
+
+    The PoA is named by its device *dev*. *mac* is reported by
+    :func:`list_poas`; it is not settable when attaching.
     """
 
     dev: str = ""
-    ethertype: int = 0xA000
+    mac: str = ""
+    ethertype: int = lib.POA_ETHERTYPE
 
 
 @dataclass
-class Udp4Config:
+class Udp4Poa:
     """
-    Configuration for UDP over IPv4 IPCPs.
+    Configuration for a UDP/IPv4 PoA.
     """
 
     ip_addr: str = "0.0.0.0"
-    dns_addr: str = "0.0.0.0"
-    port: int = 3435
+    port: int = lib.POA_UDP_PORT
 
 
 @dataclass
-class Udp6Config:
+class Udp6Poa:
     """
-    Configuration for UDP over IPv6 IPCPs.
+    Configuration for a UDP/IPv6 PoA.
     """
 
     ip_addr: str = "::"
-    dns_addr: str = "::"
-    port: int = 3435
+    port: int = lib.POA_UDP_PORT
+
+
+@dataclass
+class PoaSpec:
+    """
+    One PoA an IPCP attaches to.
+
+    Exactly one of *udp4*, *udp6* or *eth* must be set.
+    """
+
+    udp4: Optional[Udp4Poa] = None
+    udp6: Optional[Udp6Poa] = None
+    eth: Optional[EthPoa] = None
+
+
+@dataclass
+class PoaAddr:
+    """
+    Address of a peer PoA.
+
+    *poa_type* is an :class:`PoaType`. For UDP, *addr* is an IP
+    literal or a host name the IRM resolves. For Ethernet the peer
+    is resolved by name query and our own PoA may be pinned by
+    *dev*.
+    """
+
+    poa_type: PoaType
+    addr: str = ""
+    port: int = lib.POA_UDP_PORT
+    ethertype: int = lib.POA_ETHERTYPE
+    dev: str = ""
 
 
 @dataclass
@@ -227,9 +266,6 @@ class IpcpConfig:
     layer_name: str = ""
     dir_hash_algo: DirectoryHashAlgo = DirectoryHashAlgo.SHA3_256
     unicast: Optional[UnicastConfig] = None
-    eth: Optional[EthConfig] = None
-    udp4: Optional[Udp4Config] = None
-    udp6: Optional[Udp6Config] = None
 
 
 @dataclass
@@ -267,6 +303,89 @@ class IpcpInfo:
     layer: str
 
 
+def _poa_spec_to_c(poa: PoaSpec) -> Any:
+    """
+    Convert an :class:`PoaSpec` to a C ``struct poa_spec *``.
+    """
+
+    media = [m for m in ("udp4", "udp6", "eth") if getattr(poa, m) is not None]
+    if len(media) != 1:
+        raise ValueError(
+            "A PoA needs exactly one of udp4, udp6 or eth, got "
+            f"{', '.join(media) if media else 'none'}."
+        )
+
+    _poa = ffi.new("struct poa_spec *")
+
+    if poa.udp4 is not None:
+        if lib.poa_spec_set_udp(_poa, 0, poa.udp4.ip_addr.encode(), poa.udp4.port) != 0:
+            raise ValueError(f"Invalid IPv4 address: {poa.udp4.ip_addr}")
+
+        return _poa
+
+    if poa.udp6 is not None:
+        if lib.poa_spec_set_udp(_poa, 1, poa.udp6.ip_addr.encode(), poa.udp6.port) != 0:
+            raise ValueError(f"Invalid IPv6 address: {poa.udp6.ip_addr}")
+
+        return _poa
+
+    if poa.eth.dev == "":
+        raise ValueError("An Ethernet PoA needs a device name (dev).")
+
+    if lib.poa_spec_set_eth(_poa, poa.eth.dev.encode(), poa.eth.ethertype) != 0:
+        raise ValueError(f"Invalid Ethernet PoA: dev={poa.eth.dev!r}")
+
+    return _poa
+
+
+def _poa_spec_from_c(_poa: Any) -> PoaSpec:
+    """
+    Convert a C ``struct poa_spec_py *`` to a :class:`PoaSpec`.
+    """
+
+    poa_type = PoaType(_poa.type)
+    addr = ffi.string(_poa.addr).decode()
+
+    if poa_type == PoaType.UDP4:
+        return PoaSpec(udp4=Udp4Poa(ip_addr=addr, port=_poa.port))
+
+    if poa_type == PoaType.UDP6:
+        return PoaSpec(udp6=Udp6Poa(ip_addr=addr, port=_poa.port))
+
+    return PoaSpec(
+        eth=EthPoa(
+            dev=ffi.string(_poa.dev).decode(),
+            mac=ffi.string(_poa.mac).decode(),
+            ethertype=_poa.ethertype,
+        )
+    )
+
+
+def _poa_addr_to_c(addr: PoaAddr) -> Any:
+    """
+    Convert an :class:`PoaAddr` to a C ``struct poa_addr *``.
+
+    A UDP address that is not an IP literal is passed on as a host name
+    for the IRM to resolve.
+    """
+
+    _addr = ffi.new("struct poa_addr *")
+    if (
+        lib.poa_addr_set(
+            _addr,
+            int(addr.poa_type),
+            addr.addr.encode(),
+            addr.port,
+            addr.ethertype,
+            addr.dev.encode(),
+        )
+        != 0
+    ):
+        raise ValueError(f"Invalid PoA address: {addr}")
+
+    return _addr
+
+
 def _ipcp_config_to_c(conf: IpcpConfig) -> Any:
     """
     Convert an :class:`IpcpConfig` to a C ``struct ipcp_config *``.
@@ -278,8 +397,7 @@ def _ipcp_config_to_c(conf: IpcpConfig) -> Any:
 
     layer_name = conf.layer_name.encode()
 
-    ffi.memmove(_conf.layer_info.name, layer_name,
-                min(len(layer_name), 255))
+    ffi.memmove(_conf.layer_info.name, layer_name, min(len(layer_name), 255))
 
     _conf.layer_info.dir_hash_algo = conf.dir_hash_algo
 
@@ -304,32 +422,6 @@ def _ipcp_config_to_c(conf: IpcpConfig) -> Any:
         _conf.unicast.addr_auth_type = uc.addr_auth
         _conf.unicast.cong_avoid = uc.cong_avoid
 
-    elif conf.ipcp_type in (IpcpType.ETH_LLC, IpcpType.ETH_DIX):
-        ec = conf.eth or EthConfig()
-        dev = ec.dev.encode()
-
-        ffi.memmove(_conf.eth.dev, dev, min(len(dev), 255))
-
-        _conf.eth.ethertype = ec.ethertype
-
-    elif conf.ipcp_type == IpcpType.UDP4:
-        uc4 = conf.udp4 or Udp4Config()
-        _conf.udp4.port = uc4.port
-        if lib.ipcp_config_udp4_set_ip(_conf, uc4.ip_addr.encode()) != 0:
-            raise ValueError(f"Invalid IPv4 address: {uc4.ip_addr}")
-
-        if lib.ipcp_config_udp4_set_dns(_conf, uc4.dns_addr.encode()) != 0:
-            raise ValueError(f"Invalid IPv4 DNS address: {uc4.dns_addr}")
-
-    elif conf.ipcp_type == IpcpType.UDP6:
-        uc6 = conf.udp6 or Udp6Config()
-        _conf.udp6.port = uc6.port
-        if lib.ipcp_config_udp6_set_ip(_conf, uc6.ip_addr.encode()) != 0:
-            raise ValueError(f"Invalid IPv6 address: {uc6.ip_addr}")
-
-        if lib.ipcp_config_udp6_set_dns(_conf, uc6.dns_addr.encode()) != 0:
-            raise ValueError(f"Invalid IPv6 DNS address: {uc6.dns_addr}")
-
     return _conf
 
 
@@ -346,20 +438,18 @@ def _name_info_to_c(info: NameInfo) -> Any:
 
     _info.pol_lb = info.pol_lb
 
-    for attr, sec in (('s', info.server_sec), ('c', info.client_sec)):
+    for attr, sec in (("s", info.server_sec), ("c", info.client_sec)):
         sec_paths = getattr(_info, attr)
 
-        for fld in ('sec', 'key', 'crt'):
+        for fld in ("sec", "key", "crt"):
             val = getattr(sec, fld).encode()
 
-            ffi.memmove(getattr(sec_paths, fld), val,
-                        min(len(val), 511))
+            ffi.memmove(getattr(sec_paths, fld), val, min(len(val), 511))
 
     return _info
 
 
-def create_ipcp(name: str,
-                ipcp_type: IpcpType) -> int:
+def create_ipcp(name: str, ipcp_type: IpcpType) -> int:
     """
     Create a new IPCP.
 
@@ -369,8 +459,7 @@ def create_ipcp(name: str,
     :raises IpcpCreateError: If creation fails or the IPCP is not found.
     """
 
-    raise_errno(lib.irm_create_ipcp(name.encode(), ipcp_type),
-                default=IpcpCreateError)
+    raise_errno(lib.irm_create_ipcp(name.encode(), ipcp_type), default=IpcpCreateError)
 
     for info in list_ipcps():
         if info.name == name:
@@ -406,12 +495,14 @@ def list_ipcps() -> List[IpcpInfo]:
     for i in range(n):
         info = _ipcps[0][i]
 
-        result.append(IpcpInfo(
-            pid=info.pid,
-            type=IpcpType(info.type),
-            name=ffi.string(info.name).decode(),
-            layer=ffi.string(info.layer).decode(),
-        ))
+        result.append(
+            IpcpInfo(
+                pid=info.pid,
+                type=IpcpType(info.type),
+                name=ffi.string(info.name).decode(),
+                layer=ffi.string(info.layer).decode(),
+            )
+        )
 
     if n > 0:
         lib.free(_ipcps[0])
@@ -419,17 +510,76 @@ def list_ipcps() -> List[IpcpInfo]:
     return result
 
 
-def enroll_ipcp(pid: int, dst: str) -> None:
+def enroll_ipcp(pid: int, dst: str, addr: Optional[PoaAddr] = None) -> None:
     """
     Enroll an IPCP in a layer.
 
-    :param pid: PID of the IPCP to enroll.
-    :param dst: Name of a member of the layer to enroll with.
+    The IPCP must already be attached to a PoA that can reach
+    *addr*; see :func:`attach_ipcp`.
+
+    :param pid:  PID of the IPCP to enroll.
+    :param dst:  Name of a member of the layer to enroll with.
+    :param addr: Address of the PoA to enroll over. If
+                 *None*, *dst* is resolved through the IRM.
     :raises IpcpEnrollError: If the IPCP could not enroll with *dst*.
     """
 
-    raise_errno(lib.irm_enroll_ipcp(pid, dst.encode()),
-                default=IpcpEnrollError)
+    _addr = ffi.NULL if addr is None else _poa_addr_to_c(addr)
+
+    raise_errno(lib.irm_enroll_ipcp(pid, dst.encode(), _addr), default=IpcpEnrollError)
+
+
+def attach_ipcp(pid: int, poa: PoaSpec) -> None:
+    """
+    Attach an IPCP to a medium. Repeat for more than one PoA.
+
+    :param pid: PID of the IPCP to attach.
+    :param poa: The PoA to attach to.
+    :raises IpcpAttachError: If the PoA could not be attached.
+    """
+
+    raise_errno(lib.irm_attach_ipcp(pid, _poa_spec_to_c(poa)), default=IpcpAttachError)
+
+
+def detach_ipcp(pid: int, poa: PoaSpec) -> None:
+    """
+    Release a PoA an IPCP is attached to.
+
+    :param pid: PID of the IPCP to detach.
+    :param poa: The PoA to release.
+    :raises IpcpAttachError: If the PoA could not be released.
+    """
+
+    raise_errno(lib.irm_detach_ipcp(pid, _poa_spec_to_c(poa)), default=IpcpAttachError)
+
+
+def list_poas(pid: int) -> List[PoaSpec]:
+    """
+    List the PoAs an IPCP is attached to.
+
+    :param pid: PID of the IPCP to query.
+    :return: List of :class:`PoaSpec` objects.
+    :raises IpcpAttachError: If the PoAs could not be listed.
+    """
+
+    _poas = ffi.new("struct poa_spec **")
+    n = raise_errno(lib.irm_list_poas(pid, _poas), default=IpcpAttachError)
+
+    _poa = ffi.new("struct poa_spec_py *")
+
+    result = []
+
+    try:
+        for i in range(n):
+            if lib.poa_spec_get(_poas[0], i, _poa) != 0:
+                raise IpcpAttachError(f"IPCP {pid} reported an unknown PoA.")
+
+            result.append(_poa_spec_from_c(_poa))
+    finally:
+        if n > 0:
+            lib.free(_poas[0])
+
+    return result
 
 
 def bootstrap_ipcp(pid: int, conf: IpcpConfig) -> None:
@@ -443,14 +593,16 @@ def bootstrap_ipcp(pid: int, conf: IpcpConfig) -> None:
 
     _conf = _ipcp_config_to_c(conf)
 
-    raise_errno(lib.irm_bootstrap_ipcp(pid, _conf),
-                default=IpcpBootstrapError)
+    raise_errno(lib.irm_bootstrap_ipcp(pid, _conf), default=IpcpBootstrapError)
 
 
-def connect_ipcp(pid: int,
-                 component: str,
-                 dst: str,
-                 qos: Optional[QoSSpec] = None) -> None:
+def connect_ipcp(
+    pid: int,
+    component: str,
+    dst: str,
+    qos: Optional[QoSSpec] = None,
+    addr: Optional[PoaAddr] = None,
+) -> None:
     """
     Connect an IPCP component to a destination.
 
@@ -458,6 +610,8 @@ def connect_ipcp(pid: int,
     :param component: :data:`DT_COMP` or :data:`MGMT_COMP`.
     :param dst:       Destination name.
     :param qos:       QoS specification for the connection.
+    :param addr:      Address of the PoA to connect over. If
+                      *None*, *dst* is resolved through the IRM.
     :raises IpcpConnectError: If *component* could not be
                               connected to *dst*.
     """
@@ -466,16 +620,15 @@ def connect_ipcp(pid: int,
     if _qos == ffi.NULL:
         _qos = ffi.new("qosspec_t *")
 
+    _addr = ffi.NULL if addr is None else _poa_addr_to_c(addr)
+
     raise_errno(
-        lib.irm_connect_ipcp(pid, dst.encode(), component.encode(),
-                             _qos[0]),
+        lib.irm_connect_ipcp(pid, dst.encode(), component.encode(), _qos[0], _addr),
         default=IpcpConnectError,
     )
 
 
-def disconnect_ipcp(pid: int,
-                    component: str,
-                    dst: str) -> None:
+def disconnect_ipcp(pid: int, component: str, dst: str) -> None:
     """
     Disconnect an IPCP component from a destination.
 
@@ -492,10 +645,7 @@ def disconnect_ipcp(pid: int,
     )
 
 
-def bind_program(prog: str,
-                 name: str,
-                 opts: int = 0,
-                 argv: Optional[List[str]] = None) -> None:
+def bind_program(prog: str, name: str, opts: int = 0, argv: Optional[List[str]] = None) -> None:
     """
     Bind a program to a name.
 
@@ -519,8 +669,7 @@ def bind_program(prog: str,
         _argv = ffi.NULL
 
     raise_errno(
-        lib.irm_bind_program(prog.encode(), name.encode(),
-                             opts, argc, _argv),
+        lib.irm_bind_program(prog.encode(), name.encode(), opts, argc, _argv),
         default=BindError,
     )
 
@@ -534,8 +683,7 @@ def unbind_program(prog: str, name: str) -> None:
     :raises BindError: If *prog* could not be unbound from *name*.
     """
 
-    raise_errno(lib.irm_unbind_program(prog.encode(), name.encode()),
-                default=BindError)
+    raise_errno(lib.irm_unbind_program(prog.encode(), name.encode()), default=BindError)
 
 
 def bind_process(pid: int, name: str) -> None:
@@ -547,8 +695,7 @@ def bind_process(pid: int, name: str) -> None:
     :raises BindError: If the process could not be bound to *name*.
     """
 
-    raise_errno(lib.irm_bind_process(pid, name.encode()),
-                default=BindError)
+    raise_errno(lib.irm_bind_process(pid, name.encode()), default=BindError)
 
 
 def unbind_process(pid: int, name: str) -> None:
@@ -560,8 +707,7 @@ def unbind_process(pid: int, name: str) -> None:
     :raises BindError: If the process could not be unbound from *name*.
     """
 
-    raise_errno(lib.irm_unbind_process(pid, name.encode()),
-                default=BindError)
+    raise_errno(lib.irm_unbind_process(pid, name.encode()), default=BindError)
 
 
 def create_name(info: NameInfo) -> None:
@@ -585,8 +731,7 @@ def destroy_name(name: str) -> None:
     :raises NameNotFoundError: If the name is unknown.
     """
 
-    raise_errno(lib.irm_destroy_name(name.encode()),
-                default=NameNotFoundError)
+    raise_errno(lib.irm_destroy_name(name.encode()), default=NameNotFoundError)
 
 
 def list_names() -> List[NameInfo]:
@@ -605,20 +750,22 @@ def list_names() -> List[NameInfo]:
     for i in range(n):
         info = _names[0][i]
 
-        result.append(NameInfo(
-            name=ffi.string(info.name).decode(),
-            pol_lb=LoadBalancePolicy(info.pol_lb),
-            server_sec=NameSecPaths(
-                sec=ffi.string(info.s.sec).decode(),
-                key=ffi.string(info.s.key).decode(),
-                crt=ffi.string(info.s.crt).decode(),
-            ),
-            client_sec=NameSecPaths(
-                sec=ffi.string(info.c.sec).decode(),
-                key=ffi.string(info.c.key).decode(),
-                crt=ffi.string(info.c.crt).decode(),
-            ),
-        ))
+        result.append(
+            NameInfo(
+                name=ffi.string(info.name).decode(),
+                pol_lb=LoadBalancePolicy(info.pol_lb),
+                server_sec=NameSecPaths(
+                    sec=ffi.string(info.s.sec).decode(),
+                    key=ffi.string(info.s.key).decode(),
+                    crt=ffi.string(info.s.crt).decode(),
+                ),
+                client_sec=NameSecPaths(
+                    sec=ffi.string(info.c.sec).decode(),
+                    key=ffi.string(info.c.key).decode(),
+                    crt=ffi.string(info.c.crt).decode(),
+                ),
+            )
+        )
 
     if n > 0:
         lib.free(_names[0])
@@ -635,8 +782,7 @@ def reg_name(name: str, pid: int) -> None:
     :raises NameNotFoundError: If the name is unknown.
     """
 
-    raise_errno(lib.irm_reg_name(name.encode(), pid),
-                default=NameNotFoundError)
+    raise_errno(lib.irm_reg_name(name.encode(), pid), default=NameNotFoundError)
 
 
 def unreg_name(name: str, pid: int) -> None:
@@ -649,5 +795,4 @@ def unreg_name(name: str, pid: int) -> None:
                                is unknown.
     """
 
-    raise_errno(lib.irm_unreg_name(name.encode(), pid),
-                default=NameNotFoundError)
+    raise_errno(lib.irm_unreg_name(name.encode(), pid), default=NameNotFoundError)

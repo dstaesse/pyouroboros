@@ -16,30 +16,30 @@ import errno
 import os
 from importlib.metadata import PackageNotFoundError, version
 
-ENOTALLOC  = 1000  # Flow is not allocated
-EIPCPTYPE  = 1001  # Unknown IPCP type
-EIRMD      = 1002  # Failed to communicate with IRMD
-EIPCP      = 1003  # Failed to communicate with IPCP
+ENOTALLOC = 1000  # Flow is not allocated
+EIPCPTYPE = 1001  # Unknown IPCP type
+EIRMD = 1002  # Failed to communicate with IRMD
+EIPCP = 1003  # Failed to communicate with IPCP
 EIPCPSTATE = 1004  # Target in wrong state
-EFLOWDOWN  = 1005  # Flow is down
-EFLOWPEER  = 1006  # Flow is down (peer timed out)
-ENAME      = 1007  # Naming error
-ECRYPT     = 1008  # Encryption error
-EAUTH      = 1009  # Authentication error
-EREPLAY    = 1010  # OAP replay detected
+EFLOWDOWN = 1005  # Flow is down
+EFLOWPEER = 1006  # Flow is down (peer timed out)
+ENAME = 1007  # Naming error
+ECRYPT = 1008  # Encryption error
+EAUTH = 1009  # Authentication error
+EREPLAY = 1010  # OAP replay detected
 
 _O7S_ERRNO_STR: dict[int, str] = {
-    ENOTALLOC:  "flow is not allocated",
-    EIPCPTYPE:  "unknown IPCP type",
-    EIRMD:      "failed to communicate with IRMd",
-    EIPCP:      "failed to communicate with IPCP",
+    ENOTALLOC: "flow is not allocated",
+    EIPCPTYPE: "unknown IPCP type",
+    EIRMD: "failed to communicate with IRMd",
+    EIPCP: "failed to communicate with IPCP",
     EIPCPSTATE: "target in wrong state",
-    EFLOWDOWN:  "flow is down",
-    EFLOWPEER:  "flow peer timed out",
-    ENAME:      "naming error",
-    ECRYPT:     "encryption error",
-    EAUTH:      "authentication error",
-    EREPLAY:    "OAP replay detected",
+    EFLOWDOWN: "flow is down",
+    EFLOWPEER: "flow peer timed out",
+    ENAME: "naming error",
+    ECRYPT: "encryption error",
+    EAUTH: "authentication error",
+    EREPLAY: "OAP replay detected",
 }
 
 
@@ -64,6 +64,12 @@ class IpcpCreateError(IrmError):
 class IpcpBootstrapError(IrmError):
     """
     Raised when IPCP bootstrapping fails.
+    """
+
+
+class IpcpAttachError(IrmError):
+    """
+    Raised when attaching, detaching or listing a PoA fails.
     """
 
 
@@ -200,24 +206,24 @@ class FlowDeallocWarning(Warning):
 
 
 _ERRNO_MAP: dict[int, type[BaseException]] = {
-    errno.ETIMEDOUT:    TimeoutError,
-    errno.EAGAIN:       BlockingIOError,
-    errno.EWOULDBLOCK:  BlockingIOError,
-    errno.ENOMEM:       MemoryError,
-    errno.EACCES:       PermissionError,
-    errno.ENOTCONN:     ConnectionError,
-    errno.ECONNRESET:   ConnectionResetError,
-    ENOTALLOC:          FlowNotAllocatedError,
-    EIPCPTYPE:          IpcpTypeError,
-    EIRMD:              IrmdError,
-    EIPCP:              IpcpdError,
-    EIPCPSTATE:         IpcpStateError,
-    EFLOWDOWN:          FlowDownError,
-    EFLOWPEER:          FlowPeerError,
-    ENAME:              NameNotFoundError,
-    ECRYPT:             FlowCryptError,
-    EAUTH:              FlowAuthError,
-    EREPLAY:            FlowReplayError,
+    errno.ETIMEDOUT: TimeoutError,
+    errno.EAGAIN: BlockingIOError,
+    errno.EWOULDBLOCK: BlockingIOError,
+    errno.ENOMEM: MemoryError,
+    errno.EACCES: PermissionError,
+    errno.ENOTCONN: ConnectionError,
+    errno.ECONNRESET: ConnectionResetError,
+    ENOTALLOC: FlowNotAllocatedError,
+    EIPCPTYPE: IpcpTypeError,
+    EIRMD: IrmdError,
+    EIPCP: IpcpdError,
+    EIPCPSTATE: IpcpStateError,
+    EFLOWDOWN: FlowDownError,
+    EFLOWPEER: FlowPeerError,
+    ENAME: NameNotFoundError,
+    ECRYPT: FlowCryptError,
+    EAUTH: FlowAuthError,
+    EREPLAY: FlowReplayError,
 }
 
 
@@ -275,8 +281,7 @@ def check_ouroboros_version(o7s_major: int, o7s_minor: int) -> None:
     except PackageNotFoundError:
         return
 
-    if o7s_major != int(pyo7s_parts[0]) or \
-            o7s_minor != int(pyo7s_parts[1]):
+    if o7s_major != int(pyo7s_parts[0]) or o7s_minor != int(pyo7s_parts[1]):
         raise RuntimeError(
             f"Ouroboros version mismatch: library is "
             f"{o7s_major}.{o7s_minor}, pyouroboros is "
