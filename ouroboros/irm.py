@@ -301,6 +301,7 @@ class IpcpInfo:
     type: IpcpType
     name: str
     layer: str
+    transit: bool = True
 
 
 def _poa_spec_to_c(poa: PoaSpec) -> Any:
@@ -449,23 +450,46 @@ def _name_info_to_c(info: NameInfo) -> Any:
     return _info
 
 
-def create_ipcp(name: str, ipcp_type: IpcpType) -> int:
+def create_ipcp(name: str, ipcp_type: IpcpType, transit: bool = True) -> int:
     """
     Create a new IPCP.
 
     :param name:      Name for the IPCP.
     :param ipcp_type: Type of IPCP to create.
+    :param transit:   Whether the IPCP forwards traffic for others.
     :return:          PID of the created IPCP.
     :raises IpcpCreateError: If creation fails or the IPCP is not found.
     """
 
-    raise_errno(lib.irm_create_ipcp(name.encode(), ipcp_type), default=IpcpCreateError)
+    flags = lib.IPCP_FLAG_TRANSIT if transit else 0
+
+    raise_errno(
+        lib.irm_create_ipcp(name.encode(), ipcp_type, flags),
+        default=IpcpCreateError,
+    )
 
     for info in list_ipcps():
         if info.name == name:
             return info.pid
 
     raise IpcpCreateError(f"IPCP '{name}' created but not found in list")
+
+
+def set_transit(pid: int, transit: bool) -> None:
+    """
+    Turn transit on or off on a running IPCP.
+
+    :param pid:     PID of the IPCP.
+    :param transit: Whether the IPCP forwards traffic for others.
+    :raises IrmError: If the flag could not be set.
+    """
+
+    flags = lib.IPCP_FLAG_TRANSIT if transit else 0
+
+    raise_errno(
+        lib.irm_set_ipcp_flags(pid, flags, lib.IPCP_FLAG_TRANSIT),
+        default=IrmError,
+    )
 
 
 def destroy_ipcp(pid: int) -> None:
@@ -501,6 +525,7 @@ def list_ipcps() -> List[IpcpInfo]:
                 type=IpcpType(info.type),
                 name=ffi.string(info.name).decode(),
                 layer=ffi.string(info.layer).decode(),
+                transit=bool(info.flags & lib.IPCP_FLAG_TRANSIT),
             )
         )
 

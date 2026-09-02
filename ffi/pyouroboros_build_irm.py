@@ -206,12 +206,20 @@ struct name_info {
 struct ipcp_list_info {
         pid_t          pid;
         enum ipcp_type type;
+        uint32_t       flags;
         char           name[255]; /* NAME_SIZE */
         char           layer[255]; /* LAYER_NAME_SIZE */
 };
 
+#define IPCP_FLAG_TRANSIT ...
+
 pid_t   irm_create_ipcp(const char *   name,
-                        enum ipcp_type type);
+                        enum ipcp_type type,
+                        uint32_t       flags);
+
+int     irm_set_ipcp_flags(pid_t    pid,
+                           uint32_t flags,
+                           uint32_t mask);
 
 int     irm_destroy_ipcp(pid_t pid);
 

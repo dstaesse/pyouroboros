@@ -41,6 +41,7 @@ from ouroboros.irm import (
     bootstrap_ipcp as _irm_bootstrap_ipcp,
     connect_ipcp as _irm_connect_ipcp,
     create_ipcp,
+    set_transit,
     create_name as _irm_create_name,
     destroy_ipcp as _irm_destroy_ipcp,
     destroy_name,
@@ -60,6 +61,8 @@ from ouroboros.qos import QoSSpec
 __all__ = [
     # Functions
     "create_ipcp",
+    "set_transit",
+    "set_transit_by_name",
     "destroy_ipcp",
     "bootstrap_ipcp",
     "attach_ipcp",
@@ -500,7 +503,25 @@ def disconnect_ipcp(name: str, dst: str, comp: str = "*") -> None:
         _irm_disconnect_ipcp(pid, DT_COMP, dst)
 
 
-def autoboot(name: str, ipcp_type: IpcpType, layer: str, conf: Optional[IpcpConfig] = None) -> None:
+def set_transit_by_name(name: str, transit: bool) -> None:
+    """
+    Turn transit on or off on a running IPCP, addressed by name.
+
+    :param name:    Name of the IPCP.
+    :param transit: Whether the IPCP forwards traffic for others.
+    :raises ValueError: If no IPCP by that name exists.
+    """
+
+    set_transit(_pid_of(name), transit)
+
+
+def autoboot(
+    name: str,
+    ipcp_type: IpcpType,
+    layer: str,
+    conf: Optional[IpcpConfig] = None,
+    transit: bool = True,
+) -> None:
     """
     Create, autobind and bootstrap an IPCP in one step.
 
@@ -510,9 +531,10 @@ def autoboot(name: str, ipcp_type: IpcpType, layer: str, conf: Optional[IpcpConf
     :param conf:      IPCP configuration. If *None*, a default
                       :class:`IpcpConfig` is built from *ipcp_type* and
                       *layer*.
+    :param transit:   Whether the IPCP forwards traffic for others.
     """
 
-    create_ipcp(name, ipcp_type)
+    create_ipcp(name, ipcp_type, transit=transit)
 
     if conf is None:
         conf = IpcpConfig(ipcp_type=ipcp_type, layer_name=layer)
