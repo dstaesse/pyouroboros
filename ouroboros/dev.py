@@ -14,7 +14,6 @@ from enum import IntFlag
 from typing import TYPE_CHECKING, Optional, Type
 
 from _ouroboros_dev_cffi import ffi, lib
-
 from ouroboros._qosspec import qos_to_qosspec, qosspec_to_qos
 from ouroboros._timespec import fl_to_timespec, timespec_to_fl
 from ouroboros.errors import (

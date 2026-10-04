@@ -23,6 +23,9 @@ packages = ["ouroboros"]
 
 [tool.setuptools_scm]
 
+[tool.isort]
+known_first_party = ["ouroboros", "_ouroboros_dev_cffi", "_ouroboros_irm_cffi"]
+
 [tool.pylint.main]
 ignored-modules = [
   "setuptools_scm",

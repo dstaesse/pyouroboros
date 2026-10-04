@@ -14,7 +14,6 @@ from enum import IntEnum
 from typing import Any, List, Optional
 
 from _ouroboros_irm_cffi import ffi, lib
-
 from ouroboros._qosspec import qos_to_qosspec
 from ouroboros.errors import (
     BindError,

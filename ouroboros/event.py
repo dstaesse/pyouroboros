@@ -13,7 +13,6 @@ from enum import IntFlag
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type
 
 from _ouroboros_dev_cffi import ffi, lib
-
 from ouroboros._timespec import fl_to_timespec
 from ouroboros.dev import Flow
 from ouroboros.errors import FlowEventError, raise_errno
